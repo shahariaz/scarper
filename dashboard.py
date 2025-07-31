@@ -1,10 +1,12 @@
 from flask import Flask, render_template, jsonify, request
+from flask_cors import CORS
 from scraper.database import JobDatabase
 from scraper.job_api import get_job_statistics, get_recent_jobs
 import json
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 db = JobDatabase()
 
 @app.route('/')
