@@ -14,7 +14,7 @@ import { jobsApi } from '@/lib/api'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Search, X } from 'lucide-react'
+import { Search, X, Filter, Sparkles } from 'lucide-react'
 
 export default function SearchFilters() {
   const dispatch = useDispatch()
@@ -37,16 +37,26 @@ export default function SearchFilters() {
   const hasActiveFilters = searchQuery || companyFilter || locationFilter || typeFilter
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
+    <div className="gradient-card p-6 rounded-xl shadow-2xl border border-primary/20 mb-8 hover-lift">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-lg animate-glow">
+          <Filter className="h-5 w-5 text-black" />
+        </div>
+        <h3 className="text-xl font-semibold text-foreground flex items-center gap-2">
+          Search & Filter Jobs
+          <Sparkles className="h-5 w-5 text-yellow-400 animate-pulse" />
+        </h3>
+      </div>
+      
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Search Input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+        <div className="relative group">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
           <Input
             placeholder="Search jobs, companies..."
             value={searchQuery}
             onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-            className="pl-10"
+            className="pl-10 bg-secondary/50 border-primary/20 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 hover:bg-secondary/70"
           />
         </div>
 
@@ -55,13 +65,13 @@ export default function SearchFilters() {
           value={companyFilter}
           onValueChange={(value) => dispatch(setCompanyFilter(value === 'all' ? '' : value))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="bg-secondary/50 border-primary/20 hover:bg-secondary/70 focus:border-primary transition-all duration-300">
             <SelectValue placeholder="Select Company" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Companies</SelectItem>
+          <SelectContent className="gradient-card border-primary/20">
+            <SelectItem value="all" className="hover:bg-primary/20">All Companies</SelectItem>
             {companies.map((company) => (
-              <SelectItem key={company} value={company}>
+              <SelectItem key={company} value={company} className="hover:bg-primary/20">
                 {company}
               </SelectItem>
             ))}
@@ -73,13 +83,13 @@ export default function SearchFilters() {
           value={locationFilter}
           onValueChange={(value) => dispatch(setLocationFilter(value === 'all' ? '' : value))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="bg-secondary/50 border-primary/20 hover:bg-secondary/70 focus:border-primary transition-all duration-300">
             <SelectValue placeholder="Select Location" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Locations</SelectItem>
+          <SelectContent className="gradient-card border-primary/20">
+            <SelectItem value="all" className="hover:bg-primary/20">All Locations</SelectItem>
             {locations.map((location) => (
-              <SelectItem key={location} value={location}>
+              <SelectItem key={location} value={location} className="hover:bg-primary/20">
                 {location}
               </SelectItem>
             ))}
@@ -91,13 +101,13 @@ export default function SearchFilters() {
           value={typeFilter}
           onValueChange={(value) => dispatch(setTypeFilter(value === 'all' ? '' : value))}
         >
-          <SelectTrigger>
+          <SelectTrigger className="bg-secondary/50 border-primary/20 hover:bg-secondary/70 focus:border-primary transition-all duration-300">
             <SelectValue placeholder="Select Job Type" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
+          <SelectContent className="gradient-card border-primary/20">
+            <SelectItem value="all" className="hover:bg-primary/20">All Types</SelectItem>
             {jobTypes.map((type) => (
-              <SelectItem key={type} value={type}>
+              <SelectItem key={type} value={type} className="hover:bg-primary/20">
                 {type}
               </SelectItem>
             ))}
@@ -107,12 +117,12 @@ export default function SearchFilters() {
 
       {/* Clear Filters Button */}
       {hasActiveFilters && (
-        <div className="flex justify-end mt-4">
+        <div className="flex justify-end mt-6 animate-slide-in-right">
           <Button
             variant="outline"
             size="sm"
             onClick={() => dispatch(clearFilters())}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 border-primary/30 text-primary hover:bg-primary hover:text-white transition-all duration-300 animate-glow"
           >
             <X className="h-4 w-4" />
             Clear Filters
