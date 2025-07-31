@@ -187,7 +187,7 @@ export default function Header() {
                       </DropdownMenuItem>
                       
                       {user.user_type === 'company' && (
-                        <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg mx-1 transition-all duration-200 cursor-pointer">
+                        <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg mx-1 transition-all duration-200 cursor-pointer" onClick={() => router.push('/dashboard')}>
                           <Building2 className="mr-3 h-4 w-4" />
                           <span className="font-medium">Company Dashboard</span>
                         </DropdownMenuItem>
