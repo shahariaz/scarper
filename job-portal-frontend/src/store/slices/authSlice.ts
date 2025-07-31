@@ -40,6 +40,7 @@ export interface AuthState {
     access_token: string | null
     refresh_token: string | null
   }
+  settings: any | null
 }
 
 const getInitialTokens = () => {
@@ -55,13 +56,19 @@ const getInitialTokens = () => {
   }
 }
 
-const initialState: AuthState = {
-  user: null,
-  isAuthenticated: false,
-  isLoading: false,
-  error: null,
-  tokens: getInitialTokens(),
+const getInitialState = () => {
+  const tokens = getInitialTokens()
+  return {
+    user: null,
+    isAuthenticated: !!tokens.access_token, // Set to true if access token exists
+    isLoading: false,
+    error: null,
+    tokens,
+    settings: null,
+  }
 }
+
+const initialState: AuthState = getInitialState()
 
 // API base URL
 const API_BASE_URL = 'http://localhost:5000/api/auth'
@@ -201,6 +208,140 @@ export const logoutUser = createAsyncThunk(
   }
 )
 
+// Update user profile
+export const updateUserProfile = createAsyncThunk(
+  'auth/updateProfile',
+  async (profileData: Partial<User>, { getState, rejectWithValue }) => {
+    try {
+      const state = getState() as { auth: AuthState }
+      const token = state.auth.tokens.access_token
+
+      if (!token) {
+        return rejectWithValue('No access token available')
+      }
+
+      const response = await fetch('http://localhost:5000/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        return rejectWithValue(data.message || 'Failed to update profile')
+      }
+
+      return data.user
+    } catch (error) {
+      return rejectWithValue('Network error occurred')
+    }
+  }
+)
+
+// Change password
+export const changePassword = createAsyncThunk(
+  'auth/changePassword',
+  async (passwordData: { current_password: string; new_password: string }, { getState, rejectWithValue }) => {
+    try {
+      const state = getState() as { auth: AuthState }
+      const token = state.auth.tokens.access_token
+
+      if (!token) {
+        return rejectWithValue('No access token available')
+      }
+
+      const response = await fetch('http://localhost:5000/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(passwordData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        return rejectWithValue(data.message || 'Failed to change password')
+      }
+
+      return data.message
+    } catch (error) {
+      return rejectWithValue('Network error occurred')
+    }
+  }
+)
+
+// Get user settings
+export const getUserSettings = createAsyncThunk(
+  'auth/getSettings',
+  async (_, { getState, rejectWithValue }) => {
+    try {
+      const state = getState() as { auth: AuthState }
+      const token = state.auth.tokens.access_token
+
+      if (!token) {
+        return rejectWithValue('No access token available')
+      }
+
+      const response = await fetch('http://localhost:5000/api/auth/settings', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        return rejectWithValue(data.message || 'Failed to get settings')
+      }
+
+      return data.settings
+    } catch (error) {
+      return rejectWithValue('Network error occurred')
+    }
+  }
+)
+
+// Update user settings
+export const updateUserSettings = createAsyncThunk(
+  'auth/updateSettings',
+  async (settingsData: any, { getState, rejectWithValue }) => {
+    try {
+      const state = getState() as { auth: AuthState }
+      const token = state.auth.tokens.access_token
+
+      if (!token) {
+        return rejectWithValue('No access token available')
+      }
+
+      const response = await fetch('http://localhost:5000/api/auth/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(settingsData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        return rejectWithValue(data.message || 'Failed to update settings')
+      }
+
+      return settingsData
+    } catch (error) {
+      return rejectWithValue('Network error occurred')
+    }
+  }
+)
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -292,6 +433,62 @@ const authSlice = createSlice({
         state.isAuthenticated = false
         state.tokens = { access_token: null, refresh_token: null }
         state.error = null
+        state.settings = null
+      })
+      
+      // Update profile
+      .addCase(updateUserProfile.pending, (state) => {
+        state.isLoading = true
+        state.error = null
+      })
+      .addCase(updateUserProfile.fulfilled, (state, action) => {
+        state.isLoading = false
+        state.user = action.payload
+      })
+      .addCase(updateUserProfile.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload as string
+      })
+      
+      // Change password
+      .addCase(changePassword.pending, (state) => {
+        state.isLoading = true
+        state.error = null
+      })
+      .addCase(changePassword.fulfilled, (state) => {
+        state.isLoading = false
+      })
+      .addCase(changePassword.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload as string
+      })
+      
+      // Get settings
+      .addCase(getUserSettings.pending, (state) => {
+        state.isLoading = true
+        state.error = null
+      })
+      .addCase(getUserSettings.fulfilled, (state, action) => {
+        state.isLoading = false
+        state.settings = action.payload
+      })
+      .addCase(getUserSettings.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload as string
+      })
+      
+      // Update settings
+      .addCase(updateUserSettings.pending, (state) => {
+        state.isLoading = true
+        state.error = null
+      })
+      .addCase(updateUserSettings.fulfilled, (state, action) => {
+        state.isLoading = false
+        state.settings = action.payload
+      })
+      .addCase(updateUserSettings.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload as string
       })
   },
 })

@@ -202,15 +202,21 @@ def update_profile():
     try:
         data = request.get_json()
         user_id = request.current_user['id']
+        user_type = request.current_user['user_type']
         
-        # TODO: Implement profile update logic
-        # This would involve updating user_profiles, company_profiles, or jobseeker_profiles
-        # based on the user type and provided data
+        # Update user profile based on type
+        result = auth_service.update_user_profile(user_id, user_type, data)
         
-        return jsonify({
-            'success': True,
-            'message': 'Profile updated successfully'
-        }), 200
+        if result['success']:
+            # Get updated profile
+            updated_profile = auth_service.get_user_profile(user_id)
+            return jsonify({
+                'success': True,
+                'message': 'Profile updated successfully',
+                'user': updated_profile
+            }), 200
+        else:
+            return jsonify(result), 400
         
     except Exception as e:
         logger.error(f"Update profile error: {e}")
@@ -224,8 +230,12 @@ def update_profile():
 def logout():
     """Logout user (invalidate refresh token)"""
     try:
-        # TODO: Implement token invalidation logic
-        # This would involve removing the refresh token from the database
+        data = request.get_json()
+        refresh_token = data.get('refresh_token') if data else None
+        
+        # Invalidate refresh token if provided
+        if refresh_token:
+            auth_service.invalidate_refresh_token(refresh_token)
         
         return jsonify({
             'success': True,
@@ -252,13 +262,13 @@ def refresh_token():
                 'message': 'Refresh token is required'
             }), 400
         
-        # TODO: Implement token refresh logic
-        # This would involve validating the refresh token and generating new tokens
+        # Refresh tokens
+        result = auth_service.refresh_access_token(refresh_token)
         
-        return jsonify({
-            'success': True,
-            'message': 'Token refreshed successfully'
-        }), 200
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 401
         
     except Exception as e:
         logger.error(f"Token refresh error: {e}")
@@ -281,12 +291,72 @@ def change_password():
                 'message': 'Current password and new password are required'
             }), 400
         
-        # TODO: Implement password change logic
+        # Validate new password strength
+        if len(data['new_password']) < 6:
+            return jsonify({
+                'success': False,
+                'message': 'New password must be at least 6 characters long'
+            }), 400
         
+        user_id = request.current_user['id']
+        result = auth_service.change_password(
+            user_id=user_id,
+            current_password=data['current_password'],
+            new_password=data['new_password']
+        )
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+        
+    except Exception as e:
+        logger.error(f"Change password error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to change password'
+        }), 500
+
+@auth_bp.route('/settings', methods=['GET'])
+@token_required
+def get_settings():
+    """Get user settings"""
+    try:
+        user_id = request.current_user['id']
+        settings = auth_service.get_user_settings(user_id)
         return jsonify({
             'success': True,
-            'message': 'Password changed successfully'
+            'settings': settings
         }), 200
+        
+    except Exception as e:
+        logger.error(f"Get settings error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to get settings'
+        }), 500
+
+@auth_bp.route('/settings', methods=['PUT'])
+@token_required
+def update_settings():
+    """Update user settings"""
+    try:
+        data = request.get_json()
+        user_id = request.current_user['id']
+        
+        result = auth_service.update_user_settings(user_id, data)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+        
+    except Exception as e:
+        logger.error(f"Update settings error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to update settings'
+        }), 500
         
     except Exception as e:
         logger.error(f"Change password error: {e}")

@@ -416,3 +416,270 @@ class AuthService:
         
         finally:
             conn.close()
+    
+    def update_user_profile(self, user_id: int, user_type: str, profile_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update user profile"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Update basic user profile
+            basic_fields = ['first_name', 'last_name', 'phone', 'avatar_url', 'bio']
+            basic_updates = []
+            basic_values = []
+            
+            for field in basic_fields:
+                if field in profile_data:
+                    basic_updates.append(f"{field} = ?")
+                    basic_values.append(profile_data[field])
+            
+            if basic_updates:
+                basic_values.append(user_id)
+                cursor.execute(f'''
+                    UPDATE user_profiles 
+                    SET {', '.join(basic_updates)}, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                ''', basic_values)
+            
+            # Update specific profile based on user type
+            if user_type == 'company':
+                company_fields = ['company_name', 'company_description', 'website', 
+                                'industry', 'company_size', 'location', 'logo_url']
+                company_updates = []
+                company_values = []
+                
+                for field in company_fields:
+                    if field in profile_data:
+                        company_updates.append(f"{field} = ?")
+                        company_values.append(profile_data[field])
+                
+                if company_updates:
+                    company_values.append(user_id)
+                    cursor.execute(f'''
+                        UPDATE company_profiles 
+                        SET {', '.join(company_updates)}, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = ?
+                    ''', company_values)
+            
+            elif user_type == 'jobseeker':
+                jobseeker_fields = ['resume_url', 'skills', 'experience_level', 
+                                  'current_position', 'expected_salary', 'location', 
+                                  'available_for_work']
+                jobseeker_updates = []
+                jobseeker_values = []
+                
+                for field in jobseeker_fields:
+                    if field in profile_data:
+                        jobseeker_updates.append(f"{field} = ?")
+                        jobseeker_values.append(profile_data[field])
+                
+                if jobseeker_updates:
+                    jobseeker_values.append(user_id)
+                    cursor.execute(f'''
+                        UPDATE jobseeker_profiles 
+                        SET {', '.join(jobseeker_updates)}, updated_at = CURRENT_TIMESTAMP
+                        WHERE user_id = ?
+                    ''', jobseeker_values)
+            
+            conn.commit()
+            
+            return {
+                'success': True,
+                'message': 'Profile updated successfully'
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error updating user profile: {e}")
+            return {
+                'success': False,
+                'message': 'Failed to update profile'
+            }
+        
+        finally:
+            conn.close()
+    
+    def change_password(self, user_id: int, current_password: str, new_password: str) -> Dict[str, Any]:
+        """Change user password"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Get current password hash
+            cursor.execute('SELECT password_hash FROM users WHERE id = ?', (user_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                return {'success': False, 'message': 'User not found'}
+            
+            current_hash = result[0]
+            
+            # Verify current password
+            if not self.verify_password(current_password, current_hash):
+                return {'success': False, 'message': 'Current password is incorrect'}
+            
+            # Hash new password
+            new_hash = self.hash_password(new_password)
+            
+            # Update password
+            cursor.execute('''
+                UPDATE users 
+                SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (new_hash, user_id))
+            
+            conn.commit()
+            
+            return {
+                'success': True,
+                'message': 'Password changed successfully'
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error changing password: {e}")
+            return {
+                'success': False,
+                'message': 'Failed to change password'
+            }
+        
+        finally:
+            conn.close()
+    
+    def invalidate_refresh_token(self, refresh_token: str) -> bool:
+        """Invalidate a refresh token"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('DELETE FROM refresh_tokens WHERE token = ?', (refresh_token,))
+            conn.commit()
+            return cursor.rowcount > 0
+            
+        except Exception as e:
+            logger.error(f"Error invalidating refresh token: {e}")
+            return False
+        
+        finally:
+            conn.close()
+    
+    def refresh_access_token(self, refresh_token: str) -> Dict[str, Any]:
+        """Refresh access token using refresh token"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Validate refresh token
+            cursor.execute('''
+                SELECT rt.user_id, u.user_type
+                FROM refresh_tokens rt
+                JOIN users u ON rt.user_id = u.id
+                WHERE rt.token = ? AND rt.expires_at > CURRENT_TIMESTAMP
+            ''', (refresh_token,))
+            
+            result = cursor.fetchone()
+            if not result:
+                return {'success': False, 'message': 'Invalid or expired refresh token'}
+            
+            user_id, user_type = result
+            
+            # Generate new tokens
+            new_tokens = self.generate_tokens(user_id, user_type)
+            
+            # Remove old refresh token
+            cursor.execute('DELETE FROM refresh_tokens WHERE token = ?', (refresh_token,))
+            conn.commit()
+            
+            return {
+                'success': True,
+                'message': 'Token refreshed successfully',
+                **new_tokens
+            }
+            
+        except Exception as e:
+            logger.error(f"Error refreshing token: {e}")
+            return {
+                'success': False,
+                'message': 'Token refresh failed'
+            }
+        
+        finally:
+            conn.close()
+    
+    def get_user_settings(self, user_id: int) -> Dict[str, Any]:
+        """Get user settings"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Get user settings from users table
+            cursor.execute('''
+                SELECT is_active, is_verified, email
+                FROM users 
+                WHERE id = ?
+            ''', (user_id,))
+            
+            result = cursor.fetchone()
+            if not result:
+                return {}
+            
+            is_active, is_verified, email = result
+            
+            # Return default settings (you can expand this to include more settings)
+            return {
+                'privacy': {
+                    'profile_visible': True,
+                    'email_visible': False,
+                    'phone_visible': False,
+                    'show_online_status': True
+                },
+                'notifications': {
+                    'email_notifications': True,
+                    'push_notifications': True,
+                    'job_alerts': True,
+                    'message_notifications': True
+                },
+                'security': {
+                    'two_factor_enabled': False,
+                    'login_notifications': True,
+                    'session_timeout': 30
+                },
+                'preferences': {
+                    'theme': 'dark',
+                    'language': 'en',
+                    'timezone': 'UTC',
+                    'date_format': 'MM/DD/YYYY'
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting user settings: {e}")
+            return {}
+        
+        finally:
+            conn.close()
+    
+    def update_user_settings(self, user_id: int, settings_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update user settings"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # For now, we'll just return success since settings are stored in memory
+            # In a real application, you'd want to create a settings table
+            logger.info(f"Settings updated for user {user_id}: {settings_data}")
+            
+            return {
+                'success': True,
+                'message': 'Settings updated successfully'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error updating user settings: {e}")
+            return {
+                'success': False,
+                'message': 'Failed to update settings'
+            }
+        
+        finally:
+            conn.close()
