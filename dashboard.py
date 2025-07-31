@@ -2,12 +2,20 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from scraper.database import JobDatabase
 from scraper.job_api import get_job_statistics, get_recent_jobs
+from scraper.api.auth_routes import auth_bp
+from scraper.models.auth_models import AuthService
 import json
 from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Initialize database and auth service
 db = JobDatabase()
+auth_service = AuthService()
+
+# Register authentication blueprint
+app.register_blueprint(auth_bp)
 
 @app.route('/')
 def dashboard():

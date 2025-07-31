@@ -10,6 +10,7 @@ import { jobsApi } from '@/lib/api'
 import JobList from '@/components/JobList'
 import SearchFilters from '@/components/SearchFilters'
 import Pagination from '@/components/Pagination'
+import Header from '@/components/Header'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -96,6 +97,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen gradient-bg">
+      <Header />
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8 text-center animate-slide-up animate-once">
           <h1 className="text-5xl font-bold bg-gradient-to-r from-yellow-400 via-yellow-300 to-orange-400 bg-clip-text text-transparent mb-4 animate-float">

@@ -6,7 +6,6 @@ import { setSelectedJob } from '@/store/slices/jobsSlice'
 import { 
   Dialog, 
   DialogContent, 
-  DialogDescription, 
   DialogHeader, 
   DialogTitle 
 } from '@/components/ui/dialog'
@@ -50,12 +49,12 @@ export default function JobDetailModal() {
               <DialogTitle className="text-2xl md:text-3xl font-bold mb-3 text-yellow-400 leading-tight">
                 {selectedJob.title}
               </DialogTitle>
-              <DialogDescription className="flex items-center gap-3 text-base md:text-lg">
+              <div className="flex items-center gap-3 text-base md:text-lg">
                 <div className="p-2 bg-yellow-400 rounded-lg flex-shrink-0">
                   <Building2 className="h-4 w-4 md:h-5 md:w-5 text-black" />
                 </div>
                 <span className="text-gray-300 font-medium truncate">{selectedJob.company}</span>
-              </DialogDescription>
+              </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
               <Badge 
