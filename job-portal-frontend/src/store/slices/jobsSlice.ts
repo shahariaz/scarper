@@ -12,30 +12,53 @@ export interface Job {
   status: string
   description?: string
   requirements?: string
+  responsibilities?: string
   benefits?: string
   salary?: string
+  experience_level?: string
+  skills?: string
+}
+
+export interface PaginationInfo {
+  total: number
+  page: number
+  per_page: number
+  pages: number
+}
+
+export interface SearchFilters {
+  query: string
+  company: string
+  location: string
+  type: string
+  experience: string
 }
 
 interface JobsState {
   jobs: Job[]
-  filteredJobs: Job[]
   selectedJob: Job | null
-  searchQuery: string
-  companyFilter: string
-  locationFilter: string
-  typeFilter: string
+  filters: SearchFilters
+  pagination: PaginationInfo
   loading: boolean
   error: string | null
 }
 
 const initialState: JobsState = {
   jobs: [],
-  filteredJobs: [],
   selectedJob: null,
-  searchQuery: '',
-  companyFilter: '',
-  locationFilter: '',
-  typeFilter: '',
+  filters: {
+    query: '',
+    company: '',
+    location: '',
+    type: '',
+    experience: '',
+  },
+  pagination: {
+    total: 0,
+    page: 1,
+    per_page: 20,
+    pages: 0,
+  },
   loading: false,
   error: null,
 }
@@ -44,9 +67,9 @@ const jobsSlice = createSlice({
   name: 'jobs',
   initialState,
   reducers: {
-    setJobs: (state, action: PayloadAction<Job[]>) => {
-      state.jobs = action.payload
-      state.filteredJobs = action.payload
+    setJobsData: (state, action: PayloadAction<{ jobs: Job[]; pagination: PaginationInfo }>) => {
+      state.jobs = action.payload.jobs
+      state.pagination = action.payload.pagination
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload
@@ -58,48 +81,47 @@ const jobsSlice = createSlice({
       state.selectedJob = action.payload
     },
     setSearchQuery: (state, action: PayloadAction<string>) => {
-      state.searchQuery = action.payload
-      state.filteredJobs = filterJobs(state)
+      state.filters.query = action.payload
+      state.pagination.page = 1 // Reset to first page when searching
     },
     setCompanyFilter: (state, action: PayloadAction<string>) => {
-      state.companyFilter = action.payload
-      state.filteredJobs = filterJobs(state)
+      state.filters.company = action.payload
+      state.pagination.page = 1 // Reset to first page when filtering
     },
     setLocationFilter: (state, action: PayloadAction<string>) => {
-      state.locationFilter = action.payload
-      state.filteredJobs = filterJobs(state)
+      state.filters.location = action.payload
+      state.pagination.page = 1 // Reset to first page when filtering
     },
     setTypeFilter: (state, action: PayloadAction<string>) => {
-      state.typeFilter = action.payload
-      state.filteredJobs = filterJobs(state)
+      state.filters.type = action.payload
+      state.pagination.page = 1 // Reset to first page when filtering
+    },
+    setExperienceFilter: (state, action: PayloadAction<string>) => {
+      state.filters.experience = action.payload
+      state.pagination.page = 1 // Reset to first page when filtering
+    },
+    setPage: (state, action: PayloadAction<number>) => {
+      state.pagination.page = action.payload
+    },
+    setPerPage: (state, action: PayloadAction<number>) => {
+      state.pagination.per_page = action.payload
+      state.pagination.page = 1 // Reset to first page when changing per page
     },
     clearFilters: (state) => {
-      state.searchQuery = ''
-      state.companyFilter = ''
-      state.locationFilter = ''
-      state.typeFilter = ''
-      state.filteredJobs = state.jobs
+      state.filters = {
+        query: '',
+        company: '',
+        location: '',
+        type: '',
+        experience: '',
+      }
+      state.pagination.page = 1
     },
   },
 })
 
-function filterJobs(state: JobsState): Job[] {
-  return state.jobs.filter(job => {
-    const matchesSearch = !state.searchQuery || 
-      job.title.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
-      job.company.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
-      job.location.toLowerCase().includes(state.searchQuery.toLowerCase())
-    
-    const matchesCompany = !state.companyFilter || job.company === state.companyFilter
-    const matchesLocation = !state.locationFilter || job.location === state.locationFilter
-    const matchesType = !state.typeFilter || job.job_type === state.typeFilter
-    
-    return matchesSearch && matchesCompany && matchesLocation && matchesType
-  })
-}
-
 export const {
-  setJobs,
+  setJobsData,
   setLoading,
   setError,
   setSelectedJob,
@@ -107,6 +129,9 @@ export const {
   setCompanyFilter,
   setLocationFilter,
   setTypeFilter,
+  setExperienceFilter,
+  setPage,
+  setPerPage,
   clearFilters,
 } = jobsSlice.actions
 

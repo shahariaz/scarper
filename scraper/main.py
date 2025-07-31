@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scraper.utils.logger import setup_logger
 from scraper.database import JobDatabase
+from scraper.job_api import get_recent_jobs
 
 logger = setup_logger("Main")
 db = JobDatabase()
@@ -72,13 +73,13 @@ def run_all_parsers():
                 logger.info(f"Running parser: {parser.company}")
                 
                 # Count jobs before parsing (for new job calculation)
-                before_count = len(db.get_recent_jobs(parser.company, days=1))
+                before_count = len(get_recent_jobs(parser.company, days=1))
                 
                 jobs = parser.fetch_jobs()
                 jobs_found = len(jobs)
                 
                 # Count new jobs added today
-                after_count = len(db.get_recent_jobs(parser.company, days=1))
+                after_count = len(get_recent_jobs(parser.company, days=1))
                 jobs_new = after_count - before_count
                 
                 total_jobs_found += jobs_found
@@ -148,9 +149,9 @@ def run_single_parser(parser_name: str):
             parser = parser_class()
             logger.info(f"Running parser: {parser.company}")
             
-            before_count = len(db.get_recent_jobs(parser.company, days=1))
+            before_count = len(get_recent_jobs(parser.company, days=1))
             jobs = parser.fetch_jobs()
-            after_count = len(db.get_recent_jobs(parser.company, days=1))
+            after_count = len(get_recent_jobs(parser.company, days=1))
             
             jobs_found = len(jobs)
             jobs_new = after_count - before_count

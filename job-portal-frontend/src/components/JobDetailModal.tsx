@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Building2, MapPin, Calendar, ExternalLink, Briefcase, DollarSign, Star, Award } from 'lucide-react'
+import { Building2, ExternalLink, Award } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function JobDetailModal() {
@@ -21,8 +21,15 @@ export default function JobDetailModal() {
   const { selectedJob } = useSelector((state: RootState) => state.jobs)
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'Date not specified'
+    
     try {
-      return format(new Date(dateString), 'MMM dd, yyyy')
+      // Handle different date formats
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) {
+        return dateString // Return original if can't parse
+      }
+      return format(date, 'MMMM dd, yyyy')
     } catch {
       return dateString
     }
@@ -32,141 +39,220 @@ export default function JobDetailModal() {
     return html.replace(/<[^>]*>/g, '').trim()
   }
 
-  const formatContent = (content: string) => {
-    // Simple formatting for better readability
-    return content
-      .split('\n')
-      .filter(line => line.trim())
-      .map((line, index) => (
-        <p key={index} className="mb-2 text-muted-foreground leading-relaxed">{line.trim()}</p>
-      ))
-  }
-
   if (!selectedJob) return null
 
   return (
     <Dialog open={!!selectedJob} onOpenChange={() => dispatch(setSelectedJob(null))}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto gradient-card border-primary/20 animate-slide-up">
-        <DialogHeader className="space-y-4 pb-6 border-b border-primary/20">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <DialogTitle className="text-3xl font-bold mb-3 bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent animate-float">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto bg-gray-800 border-gray-700 shadow-2xl">
+        <DialogHeader className="space-y-4 pb-6 border-b border-gray-700">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-2xl md:text-3xl font-bold mb-3 text-yellow-400 leading-tight">
                 {selectedJob.title}
               </DialogTitle>
-              <DialogDescription className="flex items-center gap-3 text-lg">
-                <div className="p-2 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-lg animate-glow">
-                  <Building2 className="h-5 w-5 text-black" />
+              <DialogDescription className="flex items-center gap-3 text-base md:text-lg">
+                <div className="p-2 bg-yellow-400 rounded-lg flex-shrink-0">
+                  <Building2 className="h-4 w-4 md:h-5 md:w-5 text-black" />
                 </div>
-                <span className="text-foreground font-medium">{selectedJob.company}</span>
+                <span className="text-gray-300 font-medium truncate">{selectedJob.company}</span>
               </DialogDescription>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <Badge 
                 variant={selectedJob.status === 'active' ? 'default' : 'secondary'} 
                 className={selectedJob.status === 'active' 
-                  ? 'text-lg px-4 py-2 bg-gradient-to-r from-yellow-400 to-orange-400 text-black animate-pulse' 
-                  : 'text-lg px-4 py-2'
+                  ? 'px-3 py-1 bg-green-500 text-white' 
+                  : 'px-3 py-1 bg-gray-600 text-gray-300'
                 }
               >
                 {selectedJob.status}
               </Badge>
-              <Star className="h-6 w-6 text-yellow-400 animate-pulse" />
             </div>
           </div>
         </DialogHeader>
 
-        <div className="grid gap-8 md:grid-cols-3 mt-6">
+        <div className="grid gap-6 lg:grid-cols-4 mt-6">
           {/* Job Info Sidebar */}
-          <div className="space-y-6 animate-slide-in-left">
-            <Card className="gradient-card border-primary/20 hover-lift">
-              <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Award className="h-5 w-5 text-primary" />
+          <div className="space-y-4 lg:order-2">
+            <Card className="bg-gray-900 border-gray-700">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2 text-yellow-400">
+                  <Award className="h-4 w-4 text-yellow-400" />
                   Job Information
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg">
-                  <MapPin className="h-5 w-5 text-yellow-400" />
-                  <span className="font-medium">{selectedJob.location}</span>
-                </div>
-                
-                <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg">
-                  <Briefcase className="h-5 w-5 text-yellow-400" />
-                  <Badge variant="outline" className="border-yellow-400/30 text-yellow-400 bg-yellow-400/10">
-                    {selectedJob.job_type}
-                  </Badge>
-                </div>
-                
-                <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg">
-                  <Calendar className="h-5 w-5 text-yellow-400" />
-                  <span className="text-sm">Posted {formatDate(selectedJob.posted_date)}</span>
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-yellow-400 font-medium text-sm">Location:</span>
+                    <div className="text-gray-300 mt-1 text-sm break-words">
+                      {selectedJob.location || 'Not specified'}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <span className="text-yellow-400 font-medium text-sm">Date:</span>
+                    <div className="text-gray-300 mt-1 text-sm">
+                      {formatDate(selectedJob.posted_date)}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <span className="text-yellow-400 font-medium text-sm">Position:</span>
+                    <div className="text-gray-300 mt-1 text-sm break-words">
+                      {selectedJob.title}
+                    </div>
+                  </div>
+                  
+                  {selectedJob.salary && (
+                    <div>
+                      <span className="text-yellow-400 font-medium text-sm">Salary:</span>
+                      <div className="text-gray-300 mt-1 text-sm break-words">
+                        {selectedJob.salary}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedJob.experience_level && (
+                    <div>
+                      <span className="text-yellow-400 font-medium text-sm">Experience:</span>
+                      <div className="text-gray-300 mt-1 text-sm break-words">
+                        {selectedJob.experience_level}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {selectedJob.salary && (
-                  <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg border border-green-500/20">
-                    <DollarSign className="h-5 w-5 text-green-400" />
-                    <span className="text-green-400 font-semibold">{selectedJob.salary}</span>
-                  </div>
-                )}
+                <Button 
+                  size="lg" 
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold py-3 mt-6"
+                  onClick={() => window.open(selectedJob.apply_link, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Apply Now
+                </Button>
               </CardContent>
             </Card>
-
-            <Button 
-              size="lg" 
-              className="w-full gradient-button text-lg py-6 shadow-2xl animate-glow"
-              onClick={() => window.open(selectedJob.apply_link, '_blank')}
-            >
-              <ExternalLink className="h-5 w-5 mr-2" />
-              Apply Now
-            </Button>
           </div>
 
-          {/* Job Details */}
-          <div className="md:col-span-2 space-y-6 animate-slide-in-right">
+          {/* Job Details Content */}
+          <div className="lg:col-span-3 lg:order-1 space-y-6">
             {selectedJob.description && (
-              <Card className="gradient-card border-primary/20 hover-lift">
-                <CardHeader>
-                  <CardTitle className="text-xl text-yellow-400 flex items-center gap-2">
-                    <div className="w-2 h-6 bg-gradient-to-b from-yellow-400 to-orange-400 rounded-full"></div>
-                    Job Description
+              <Card className="bg-gray-900 border-gray-700">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-yellow-400 flex items-center gap-2">
+                    <div className="w-1 h-5 bg-yellow-400 rounded-full"></div>
+                    Overview
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-sm max-w-none space-y-4">
-                    {formatContent(stripHtml(selectedJob.description))}
+                  <div className="text-gray-300 leading-relaxed space-y-3">
+                    {stripHtml(selectedJob.description).split('\n').filter(line => line.trim()).map((paragraph, index) => (
+                      <p key={index} className="break-words text-sm">
+                        {paragraph.trim()}
+                      </p>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {selectedJob.responsibilities && (
+              <Card className="bg-gray-900 border-gray-700">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-yellow-400 flex items-center gap-2">
+                    <div className="w-1 h-5 bg-blue-400 rounded-full"></div>
+                    Responsibilities
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-gray-300 leading-relaxed space-y-2">
+                    {stripHtml(selectedJob.responsibilities).split('\n').filter(line => line.trim()).map((item, index) => {
+                      const cleanItem = item.trim();
+                      if (!cleanItem) return null;
+                      return (
+                        <div key={index} className="flex items-start gap-2">
+                          <span className="text-yellow-400 mt-1 text-xs">•</span>
+                          <p className="text-sm break-words flex-1">{cleanItem.replace(/^[-•*]\s|^\d+\.\s/, '')}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
             )}
 
             {selectedJob.requirements && (
-              <Card className="gradient-card border-primary/20 hover-lift">
-                <CardHeader>
-                  <CardTitle className="text-xl text-yellow-400 flex items-center gap-2">
-                    <div className="w-2 h-6 bg-gradient-to-b from-orange-400 to-yellow-500 rounded-full"></div>
+              <Card className="bg-gray-900 border-gray-700">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-yellow-400 flex items-center gap-2">
+                    <div className="w-1 h-5 bg-orange-400 rounded-full"></div>
                     Requirements
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-sm max-w-none space-y-4">
-                    {formatContent(stripHtml(selectedJob.requirements))}
+                  <div className="text-gray-300 leading-relaxed space-y-2">
+                    {stripHtml(selectedJob.requirements).split('\n').filter(line => line.trim()).map((item, index) => {
+                      const cleanItem = item.trim();
+                      if (!cleanItem) return null;
+                      return (
+                        <div key={index} className="flex items-start gap-2">
+                          <span className="text-yellow-400 mt-1 text-xs">•</span>
+                          <p className="text-sm break-words flex-1">{cleanItem.replace(/^[-•*]\s|^\d+\.\s/, '')}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
             )}
 
             {selectedJob.benefits && (
-              <Card className="gradient-card border-primary/20 hover-lift">
-                <CardHeader>
-                  <CardTitle className="text-xl text-yellow-400 flex items-center gap-2">
-                    <div className="w-2 h-6 bg-gradient-to-b from-yellow-500 to-orange-500 rounded-full"></div>
-                    Benefits & Perks
+              <Card className="bg-gray-900 border-gray-700">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-yellow-400 flex items-center gap-2">
+                    <div className="w-1 h-5 bg-green-400 rounded-full"></div>
+                    What We Offer
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-sm max-w-none space-y-4">
-                    {formatContent(stripHtml(selectedJob.benefits))}
+                  <div className="text-gray-300 leading-relaxed space-y-2">
+                    {stripHtml(selectedJob.benefits).split('\n').filter(line => line.trim()).map((item, index) => {
+                      const cleanItem = item.trim();
+                      if (!cleanItem) return null;
+                      return (
+                        <div key={index} className="flex items-start gap-2">
+                          <span className="text-yellow-400 mt-1 text-xs">•</span>
+                          <p className="text-sm break-words flex-1">{cleanItem.replace(/^[-•*]\s|^\d+\.\s/, '')}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Show skills if available */}
+            {selectedJob.skills && (
+              <Card className="bg-gray-900 border-gray-700">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-yellow-400 flex items-center gap-2">
+                    <div className="w-1 h-5 bg-purple-400 rounded-full"></div>
+                    Skills & Technologies
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-gray-300 leading-relaxed space-y-2">
+                    {stripHtml(selectedJob.skills).split('\n').filter(line => line.trim()).map((item, index) => {
+                      const cleanItem = item.trim();
+                      if (!cleanItem) return null;
+                      return (
+                        <div key={index} className="flex items-start gap-2">
+                          <span className="text-yellow-400 mt-1 text-xs">•</span>
+                          <p className="text-sm break-words flex-1">{cleanItem.replace(/^[-•*]\s|^\d+\.\s/, '')}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -174,19 +260,19 @@ export default function JobDetailModal() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-4 pt-6 border-t border-primary/20 mt-8">
+        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-gray-700 mt-8">
           <Button 
             variant="outline" 
             onClick={() => dispatch(setSelectedJob(null))}
-            className="border-yellow-400/30 text-yellow-400 hover:bg-yellow-400 hover:text-black transition-all duration-300"
+            className="border-gray-600 hover:bg-gray-700 text-gray-300"
           >
             Close
           </Button>
           <Button 
-            className="gradient-button flex items-center gap-2 shadow-lg"
+            className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-semibold"
             onClick={() => window.open(selectedJob.apply_link, '_blank')}
           >
-            <ExternalLink className="h-4 w-4" />
+            <ExternalLink className="h-4 w-4 mr-2" />
             Apply Now
           </Button>
         </div>

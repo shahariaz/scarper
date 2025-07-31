@@ -46,33 +46,87 @@ def api_job_details(job_id):
 
 @app.route('/api/search')
 def api_search():
-    """Search jobs."""
+    """Search jobs with pagination and filters."""
+    # Get query parameters
     query = request.args.get('q', '')
-    limit = int(request.args.get('limit', 20))
+    page = int(request.args.get('page', 1))
+    per_page = min(int(request.args.get('per_page', 20)), 100)  # Max 100 per page
+    company_filter = request.args.get('company', '')
+    location_filter = request.args.get('location', '')
+    type_filter = request.args.get('type', '')
+    experience_filter = request.args.get('experience', '')
     
-    if not query:
-        return jsonify([])
+    # Calculate offset
+    offset = (page - 1) * per_page
     
-    jobs = db.search_jobs(query, limit)
-    return jsonify(jobs)
+    # Search with filters and pagination
+    result = db.search_jobs(
+        query=query,
+        limit=per_page,
+        offset=offset,
+        company_filter=company_filter,
+        location_filter=location_filter,
+        type_filter=type_filter,
+        experience_filter=experience_filter
+    )
+    
+    return jsonify(result)
+
+@app.route('/api/companies')
+def api_companies():
+    """Get list of all companies."""
+    companies = db.get_companies()
+    return jsonify(companies)
+
+@app.route('/api/locations')
+def api_locations():
+    """Get list of all locations."""
+    locations = db.get_locations()
+    return jsonify(locations)
+
+@app.route('/api/job-types')
+def api_job_types():
+    """Get list of all job types."""
+    job_types = db.get_job_types()
+    return jsonify(job_types)
+
+@app.route('/api/experience-levels')
+def api_experience_levels():
+    """Get list of all experience levels."""
+    experience_levels = db.get_experience_levels()
+    return jsonify(experience_levels)
 
 @app.route('/api/jobs')
 def api_jobs():
-    """Get recent jobs."""
-    company = request.args.get('company')
-    days = int(request.args.get('days', 7))
+    """Get jobs with pagination and filters."""
+    page = int(request.args.get('page', 1))
+    per_page = min(int(request.args.get('per_page', 20)), 100)
+    company = request.args.get('company', '')
+    location = request.args.get('location', '')
+    job_type = request.args.get('type', '')
+    experience = request.args.get('experience', '')
     
-    jobs = get_recent_jobs(company, days)
-    return jsonify(jobs)
+    # Calculate offset
+    offset = (page - 1) * per_page
+    
+    # Get jobs with pagination
+    result = db.search_jobs(
+        query="",
+        limit=per_page,
+        offset=offset,
+        company_filter=company,
+        location_filter=location,
+        type_filter=job_type,
+        experience_filter=experience
+    )
+    
+    return jsonify(result)
 
 @app.route('/api/jobs/<company>')
 def api_company_jobs(company):
     """Get jobs for a specific company."""
     jobs = get_recent_jobs(company, days=30)
     return jsonify(jobs)
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
