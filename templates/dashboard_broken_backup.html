@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Scraper Dashboard</title>
+    <!-- Chart.js removed - not needed anymore -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 10px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+            transform: rotate(45deg);
+            animation: shimmer 3s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .last-updated {
+            color: #666;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+        }
+        
+        .stat-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 1rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .charts-container {
+            display: none; /* Hidden per user request */
+        }
+        
+        .chart-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .chart-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.15);
+        }
+        
+        .chart-card h3 {
+            color: #333;
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .recent-jobs {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .recent-jobs h3 {
+            color: #333;
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .job-item {
+            padding: 1.5rem;
+            border-bottom: 1px solid #f0f0f0;
+            transition: all 0.3s ease;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .job-item:hover {
+            background: #f8f9ff;
+            transform: translateX(5px);
+        }
+        
+        .job-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .job-info {
+            flex: 1;
+        }
+        
+        .job-title {
+            font-weight: 700;
+            color: #333;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            line-height: 1.3;
+        }
+        
+        .job-meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .job-company {
+            color: #667eea;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .job-location {
+            color: #666;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .job-time {
+            color: #999;
+            font-size: 0.8rem;
+            white-space: nowrap;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            color: #666;
+        }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            body {
+                padding: 5px;
+            }
+            
+            .header {
+                padding: 1.5rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1rem;
+            }
+            
+            .stat-card {
+                padding: 1.5rem;
+            }
+            
+            .stat-number {
+                font-size: 2.5rem;
+            }
+            
+            .charts-container {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+            
+            .chart-card, .recent-jobs {
+                padding: 1.5rem;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .refresh-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .job-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .job-meta {
+                justify-content: space-between;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stat-card {
+                padding: 1rem;
+            }
+            
+            .stat-number {
+                font-size: 2rem;
+            }
+            
+            .job-item {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-rocket"></i> Job Scraper Dashboard</h1>
+            <p>Real-time monitoring of job scraping activities across Bangladesh's top tech companies</p>
+        </div>
+
+        <div class="controls">
+            <button class="refresh-btn" onclick="loadData()">
+                <i class="fas fa-sync-alt"></i> Refresh Data
+            </button>
+            <div class="last-updated">
+                <i class="fas fa-clock"></i>
+                <span id="lastUpdated">Loading...</span>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-briefcase"></i>
+                </div>
+                <div class="stat-number" id="totalJobs">-</div>
+                <div class="stat-label">Total Jobs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-calendar-day"></i>
+                </div>
+                <div class="stat-number" id="todayJobs">-</div>
+                <div class="stat-label">Today's Jobs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-calendar-week"></i>
+                </div>
+                <div class="stat-number" id="weekJobs">-</div>
+                <div class="stat-label">This Week</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-building"></i>
+                </div>
+                <div class="stat-number" id="companies">-</div>
+                <div class="stat-label">Companies</div>
+            </div>
+        </div>
+
+        <div class="recent-jobs">
+            <h3><i class="fas fa-history"></i> Recent Jobs (Last 24 Hours)</h3>
+            <div id="jobsList">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading recent jobs...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isLoading = false;
+
+        // Format numbers with commas
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        // Format time ago
+        function timeAgo(date) {
+            const now = new Date();
+            const diffTime = Math.abs(now - new Date(date));
+            const diffMinutes = Math.ceil(diffTime / (1000 * 60));
+            
+            if (diffMinutes < 60) return `${diffMinutes}m ago`;
+            const diffHours = Math.floor(diffMinutes / 60);
+            if (diffHours < 24) return `${diffHours}h ago`;
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays}d ago`;
+        }
+
+        async function loadData() {
+            if (isLoading) return;
+            isLoading = true;
+            
+            // Update refresh button
+            const refreshBtn = document.querySelector('.refresh-btn');
+            const originalText = refreshBtn.innerHTML;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            refreshBtn.disabled = true;
+            
+            try {
+                // Add timeout to prevent hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                
+                // Load statistics with timeout
+                const statsResponse = await fetch('/api/stats', {
+                    signal: controller.signal,
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!statsResponse.ok) {
+                    throw new Error(`HTTP error! status: ${statsResponse.status}`);
+                }
+                
+                const stats = await statsResponse.json();
+                
+                // Validate data structure
+                if (!stats || typeof stats !== 'object') {
+                    throw new Error('Invalid stats data received');
+                }
+                
+                // Update stats cards with validation
+                updateStatCard('totalJobs', stats.total_jobs || 0);
+                updateStatCard('todayJobs', stats.today_jobs || 0);
+                updateStatCard('weekJobs', stats.week_jobs || 0);
+                updateStatCard('companies', stats.companies || 0);
+                
+                // Load recent jobs with timeout
+                const jobsController = new AbortController();
+                const jobsTimeoutId = setTimeout(() => jobsController.abort(), 8000);
+                
+                const jobsResponse = await fetch('/api/jobs?days=1', {
+                    signal: jobsController.signal,
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                
+                clearTimeout(jobsTimeoutId);
+                
+                if (jobsResponse.ok) {
+                    const jobs = await jobsResponse.json();
+                    if (Array.isArray(jobs)) {
+                        updateJobsList(jobs);
+                    }
+                } else {
+                    console.warn('Failed to load jobs data');
+                    updateJobsList([]);
+                }
+                
+                // Update last updated time
+                document.getElementById('lastUpdated').textContent = 'Updated just now';
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                
+                if (error.name === 'AbortError') {
+                    showError('Request timeout. Please try again.');
+                } else {
+                    showError('Failed to load dashboard data. Please check your connection and try again.');
+                }
+                
+                // Set default values on error
+                updateStatCard('totalJobs', 0);
+                updateStatCard('todayJobs', 0);
+                updateStatCard('weekJobs', 0);
+                updateStatCard('companies', 0);
+                
+            } finally {
+                isLoading = false;
+                refreshBtn.innerHTML = originalText;
+                refreshBtn.disabled = false;
+            }
+        }
+
+        function updateStatCard(id, value) {
+            const element = document.getElementById(id);
+            const currentValue = parseInt(element.textContent.replace(/,/g, '')) || 0;
+            
+            if (currentValue !== value) {
+                element.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    element.textContent = formatNumber(value);
+                    element.style.transform = 'scale(1)';
+                }, 150);
+            } else {
+                element.textContent = formatNumber(value);
+            }
+        }
+
+        // Chart functions removed per user request
+
+        function updateJobsList(jobs) {
+            
+            if (companyChart) {
+                companyChart.destroy();
+            }
+            
+            const companies = Object.keys(jobsByCompany).slice(0, 8);
+            const counts = Object.values(jobsByCompany).slice(0, 8);
+            
+            // Skip if no data
+            if (companies.length === 0) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.font = '16px Arial';
+                ctx.fillStyle = '#666';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data available', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                return;
+            }
+            
+            const colors = [
+                '#667eea', '#764ba2', '#f093fb', '#f5576c',
+                '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'
+            ];
+            
+            companyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: companies,
+                    datasets: [{
+                        label: 'Jobs',
+                        data: counts,
+                        backgroundColor: colors,
+                        borderColor: colors.map(color => color + '80'),
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.parsed.y} jobs`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                color: '#666'
+                            },
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#666',
+                                maxRotation: 45,
+                                minRotation: 0
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+        }
+
+        function updateActivityChart(recentRuns) {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            
+            if (activityChart) {
+                activityChart.destroy();
+            }
+            
+            // Get last 12 hours only to prevent overcrowding
+            const hourlyData = {};
+            const now = new Date();
+            const labels = [];
+            
+            // Initialize last 12 hours
+            for (let i = 11; i >= 0; i--) {
+                const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+                const hourKey = time.getHours();
+                const label = time.toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    hour12: true 
+                });
+                labels.push(label);
+                hourlyData[hourKey] = 0;
+            }
+            
+            // Fill with actual data - limit to prevent memory issues
+            if (recentRuns && Array.isArray(recentRuns)) {
+                recentRuns.slice(0, 50).forEach(run => {
+                    if (run && run[4]) {
+                        try {
+                            const runDate = new Date(run[4]);
+                            const hour = runDate.getHours();
+                            if (hourlyData.hasOwnProperty(hour)) {
+                                hourlyData[hour] += Math.min(run[1] || 0, 100); // Cap at 100 to prevent spikes
+                            }
+                        } catch (e) {
+                            console.warn('Invalid date in run data:', run[4]);
+                        }
+                    }
+                });
+            }
+            
+            const counts = Object.values(hourlyData);
+            
+            activityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Jobs Found',
+                        data: counts,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: '#667eea',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.parsed.y} jobs found`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: Math.max(...counts) + 5, // Prevent infinite scaling
+                            ticks: {
+                                stepSize: 1,
+                                color: '#666'
+                            },
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#666',
+                                maxRotation: 0
+                            },
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 800,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+        }
+
+        function updateJobsList(jobs) {
+            const jobsList = document.getElementById('jobsList');
+            
+            if (jobs.length === 0) {
+                jobsList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <p>No jobs found in the last 24 hours.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const jobsHtml = jobs.slice(0, 15).map(job => {
+                const timeStamp = job.created_at ? timeAgo(job.created_at) : 'Recently';
+                return `
+                    <div class="job-item">
+                        <div class="job-header">
+                            <div class="job-info">
+                                <div class="job-title">${job.title}</div>
+                                <div class="job-meta">
+                                    <span class="job-company">
+                                        <i class="fas fa-building"></i> ${job.company}
+                                    </span>
+                                    <span class="job-location">
+                                        <i class="fas fa-map-marker-alt"></i> ${job.location}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="job-time">${timeStamp}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            jobsList.innerHTML = jobsHtml;
+        }
+
+        function showError(message) {
+            const jobsList = document.getElementById('jobsList');
+            jobsList.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-exclamation-triangle" style="color: #f56565;"></i>
+                    <p style="color: #f56565;">${message}</p>
+                </div>
+            `;
+        }
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            
+            // Auto-refresh every 2 minutes
+            setInterval(loadData, 2 * 60 * 1000);
+            
+            // Update "last updated" time every minute
+            setInterval(() => {
+                const lastUpdatedEl = document.getElementById('lastUpdated');
+                if (lastUpdatedEl.textContent !== 'Loading...' && lastUpdatedEl.textContent !== 'Updated just now') {
+                    const match = lastUpdatedEl.textContent.match(/(\d+)m ago/);
+                    if (match) {
+                        const minutes = parseInt(match[1]) + 1;
+                        lastUpdatedEl.textContent = `${minutes}m ago`;
+                    }
+                }
+            }, 60000);
+        });
+
+        // Make charts responsive
+        window.addEventListener('resize', function() {
+            if (companyChart) companyChart.resize();
+            if (activityChart) activityChart.resize();
+        });
+    </script>
+</body>
+</html>
