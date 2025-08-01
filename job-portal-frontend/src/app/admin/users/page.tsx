@@ -34,7 +34,6 @@ import {
   Clock,
   Filter,
   Download,
-  Plus,
 } from 'lucide-react'
 import {
   AlertDialog,
@@ -60,11 +59,10 @@ interface User {
   email: string;
   first_name?: string;
   last_name?: string;
-  user_type: 'jobseeker' | 'company' | 'admin' | 'manager';
+  user_type: 'jobseeker' | 'company' | 'admin';
   is_active: boolean;
   is_verified: boolean;
   is_suspended: boolean;
-  is_banned: boolean;
   company_name?: string;
   phone?: string;
   location?: string;
@@ -74,9 +72,6 @@ interface User {
   job_count?: number;
   application_count?: number;
   avatar_url?: string;
-  banned_reason?: string;
-  suspended_reason?: string;
-  suspended_until?: string;
 }
 
 interface UserFilters {
@@ -108,29 +103,9 @@ export default function AdminUsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [showUserDetails, setShowUserDetails] = useState(false)
   const [showEditUser, setShowEditUser] = useState(false)
-  const [showCreateUser, setShowCreateUser] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<User | null>(null)
   const [showSuspendConfirm, setShowSuspendConfirm] = useState<User | null>(null)
-  const [showBanConfirm, setShowBanConfirm] = useState<User | null>(null)
-  const [banForm, setBanForm] = useState({
-    reason: '',
-    duration: '' // empty for permanent
-  })
-  const [suspendForm, setSuspendForm] = useState({
-    reason: '',
-    duration: '7' // default 7 days
-  })
-  const [createUserForm, setCreateUserForm] = useState({
-    email: '',
-    password: '',
-    first_name: '',
-    last_name: '',
-    user_type: 'jobseeker' as 'jobseeker' | 'company' | 'admin' | 'manager',
-    phone: '',
-    location: '',
-    company_name: ''
-  })
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     per_page: 20,
@@ -149,86 +124,10 @@ export default function AdminUsersPage() {
     sortOrder: 'desc'
   })
 
-  const [editForm, setEditForm] = useState({
-    email: '',
-    is_active: true,
-    is_banned: false,
-    is_suspended: false
-  })
-
-  // Initialize edit form when selectedUser changes
-  useEffect(() => {
-    if (selectedUser && showEditUser) {
-      setEditForm({
-        email: selectedUser.email,
-        is_active: selectedUser.is_active,
-        is_banned: selectedUser.is_suspended || false, // Assuming is_banned from backend
-        is_suspended: selectedUser.is_suspended
-      })
-    }
-  }, [selectedUser, showEditUser])
-
-  const handleEditUser = async () => {
-    if (!selectedUser) return;
-    
-    setActionLoading(`edit-${selectedUser.id}`);
-    
-    try {
-      const response = await fetch(`http://localhost:5000/api/admin/users/${selectedUser.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: editForm.email,
-          is_active: editForm.is_active,
-          is_banned: editForm.is_banned,
-          is_suspended: editForm.is_suspended
-        }),
-      });
-
-      if (response.ok) {
-        const updatedUser = await response.json();
-        
-        // Update the users list with the edited user
-        setUsers(prevUsers => 
-          prevUsers.map(user => 
-            user.id === selectedUser.id 
-              ? { ...user, ...updatedUser.user }
-              : user
-          )
-        );
-        
-        // Refresh statistics
-        fetchUsers();
-        
-        // Close modal and reset form
-        setShowEditUser(false);
-        setSelectedUser(null);
-        setEditForm({
-          email: '',
-          is_active: true,
-          is_banned: false,
-          is_suspended: false
-        });
-        
-        console.log('User updated successfully');
-      } else {
-        const errorData = await response.json();
-        console.error('Failed to update user:', errorData.error);
-      }
-    } catch (error) {
-      console.error('Error updating user:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const [statistics, setStatistics] = useState({
     total: 0,
     active: 0,
     suspended: 0,
-    banned: 0,
     companies: 0,
     jobseekers: 0,
     admins: 0,
@@ -255,6 +154,8 @@ export default function AdminUsersPage() {
 
   // Fetch users data
   const fetchUsers = useCallback(async () => {
+    if (!tokens.access_token) return
+    
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -269,9 +170,9 @@ export default function AdminUsersPage() {
       if (filters.status !== 'all') params.append('status', filters.status)
       if (filters.verification !== 'all') params.append('verification', filters.verification)
 
-      const response = await fetch(`http://localhost:5000/api/admin/users?${params.toString()}`, {
+      const response = await fetch(`/api/admin/users?${params.toString()}`, {
         headers: {
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${tokens.access_token}`
         }
       })
       
@@ -284,15 +185,7 @@ export default function AdminUsersPage() {
       if (data.success) {
         setUsers(data.users)
         setPagination(data.pagination)
-        setStatistics(data.statistics || {
-          total: 0,
-          active: 0,
-          suspended: 0,
-          companies: 0,
-          jobseekers: 0,
-          admins: 0,
-          verified: 0
-        })
+        setStatistics(data.statistics || statistics)
       } else {
         throw new Error(data.message || 'Failed to fetch users')
       }
@@ -302,13 +195,13 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentPage, usersPerPage, filters])
+  }, [currentPage, usersPerPage, filters, tokens.access_token, statistics])
 
   useEffect(() => {
-    if (mounted) {
+    if (mounted && tokens.access_token && user?.user_type === 'admin') {
       fetchUsers()
     }
-  }, [mounted, fetchUsers])
+  }, [mounted, fetchUsers, tokens.access_token, user])
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -322,7 +215,7 @@ export default function AdminUsersPage() {
     
     setActionLoading(`${action}-${userId}`)
     try {
-      const response = await fetch(`http://127.0.0.1:5000/api/admin/users/${userId}/${action}`, {
+      const response = await fetch(`/api/admin/users/${userId}/${action}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${tokens.access_token}`,
@@ -358,125 +251,6 @@ export default function AdminUsersPage() {
     }
   }
 
-  const handleBanUser = async () => {
-    if (!showBanConfirm || !banForm.reason.trim()) return;
-    
-    console.log('Ban user attempt:', { 
-      userId: showBanConfirm.id, 
-      reason: banForm.reason, 
-      duration: banForm.duration,
-      hasToken: !!tokens.access_token,
-      tokenPreview: tokens.access_token ? tokens.access_token.substring(0, 20) + '...' : 'none',
-      user: user
-    });
-    
-    if (!tokens.access_token) {
-      alert('No authentication token found. Please log in again.');
-      return;
-    }
-    
-    const actionKey = `ban-${showBanConfirm.id}`;
-    setActionLoading(actionKey);
-    
-    try {
-      const response = await fetch(`http://127.0.0.1:5000/api/admin/users/${showBanConfirm.id}/ban`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokens.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          reason: banForm.reason,
-          duration: banForm.duration ? parseInt(banForm.duration) : null
-        })
-      });
-      
-      if (response.ok) {
-        await fetchUsers();
-        setShowBanConfirm(null);
-        setBanForm({ reason: '', duration: '' });
-      } else {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        console.error('Failed to ban user:', response.status, response.statusText, errorData);
-        alert(`Failed to ban user: ${errorData.message || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error banning user:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSuspendUser = async () => {
-    if (!showSuspendConfirm || !suspendForm.reason.trim() || !suspendForm.duration.trim()) return;
-    
-    const actionKey = `suspend-${showSuspendConfirm.id}`;
-    setActionLoading(actionKey);
-    
-    try {
-      const response = await fetch(`http://127.0.0.1:5000/api/admin/users/${showSuspendConfirm.id}/suspend`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          reason: suspendForm.reason,
-          duration: parseInt(suspendForm.duration)
-        })
-      });
-      
-      if (response.ok) {
-        await fetchUsers();
-        setShowSuspendConfirm(null);
-        setSuspendForm({ reason: '', duration: '7' });
-      } else {
-        console.error('Failed to suspend user');
-      }
-    } catch (error) {
-      console.error('Error suspending user:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleCreateUser = async () => {
-    if (!createUserForm.email || !createUserForm.password) return;
-    
-    setActionLoading('creating-user');
-    
-    try {
-      const response = await fetch('http://127.0.0.1:5000/api/admin/users/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(createUserForm)
-      });
-      
-      if (response.ok) {
-        await fetchUsers();
-        setShowCreateUser(false);
-        setCreateUserForm({
-          email: '',
-          password: '',
-          first_name: '',
-          last_name: '',
-          user_type: 'jobseeker',
-          phone: '',
-          location: '',
-          company_name: ''
-        });
-      } else {
-        const errorData = await response.json();
-        console.error('Failed to create user:', errorData.message);
-      }
-    } catch (error) {
-      console.error('Error creating user:', error);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const getUserInitials = (user: User) => {
     if (user.first_name && user.last_name) {
       return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
@@ -488,11 +262,8 @@ export default function AdminUsersPage() {
   }
 
   const getStatusBadge = (user: User) => {
-    if (user.is_banned) {
-      return <Badge className="bg-red-600/20 text-red-300 border-red-600/30">Banned</Badge>
-    }
     if (user.is_suspended) {
-      return <Badge className="bg-orange-500/20 text-orange-300 border-orange-500/30">Suspended</Badge>
+      return <Badge className="bg-red-500/20 text-red-300 border-red-500/30">Suspended</Badge>
     }
     if (!user.is_active) {
       return <Badge className="bg-gray-500/20 text-gray-300 border-gray-500/30">Inactive</Badge>
@@ -553,13 +324,6 @@ export default function AdminUsersPage() {
           </div>
           <div className="flex items-center space-x-3">
             <Button
-              onClick={() => setShowCreateUser(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create User
-            </Button>
-            <Button
               onClick={() => fetchUsers()}
               disabled={loading}
               className="bg-gray-700 hover:bg-gray-600 text-white"
@@ -608,18 +372,6 @@ export default function AdminUsersPage() {
                   <p className="text-3xl font-bold text-red-400">{statistics.suspended}</p>
                 </div>
                 <UserX className="h-8 w-8 text-red-400" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-400">Banned</p>
-                  <p className="text-3xl font-bold text-red-600">{statistics.banned}</p>
-                </div>
-                <Ban className="h-8 w-8 text-red-600" />
               </div>
             </CardContent>
           </Card>
@@ -876,25 +628,6 @@ export default function AdminUsersPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setShowBanConfirm(user)}
-                        disabled={actionLoading === `ban-${user.id}` || actionLoading === `unban-${user.id}`}
-                        className={user.is_banned 
-                          ? "border-green-600 text-green-300 hover:bg-green-600/20" 
-                          : "border-red-600 text-red-300 hover:bg-red-600/20"
-                        }
-                      >
-                        {actionLoading === `ban-${user.id}` || actionLoading === `unban-${user.id}` ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : user.is_banned ? (
-                          <UserCheck className="h-4 w-4" />
-                        ) : (
-                          <UserX className="h-4 w-4" />
-                        )}
-                      </Button>
-                      
-                      <Button
-                        size="sm"
-                        variant="outline"
                         onClick={() => setShowDeleteConfirm(user)}
                         disabled={actionLoading === `delete-${user.id}`}
                         className="border-red-600 text-red-300 hover:bg-red-600/20"
@@ -989,145 +722,32 @@ export default function AdminUsersPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* Ban Confirmation Dialog */}
-        <AlertDialog open={!!showBanConfirm} onOpenChange={() => setShowBanConfirm(null)}>
-          <AlertDialogContent className="bg-gray-800 border-gray-700 max-w-lg">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-white">
-                {showBanConfirm?.is_banned ? 'Unban' : 'Ban'} User
-              </AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-300">
-                {showBanConfirm?.is_banned 
-                  ? `Unban "${showBanConfirm?.email}" and restore their access.`
-                  : `Permanently ban "${showBanConfirm?.email}" from accessing the platform.`
-                }
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {!showBanConfirm?.is_banned && (
-              <div className="space-y-4 py-4">
-                <div>
-                  <Label htmlFor="ban-reason" className="text-sm font-medium text-gray-300">
-                    Reason for Ban *
-                  </Label>
-                  <Input
-                    id="ban-reason"
-                    value={banForm.reason}
-                    onChange={(e) => setBanForm(prev => ({ ...prev, reason: e.target.value }))}
-                    placeholder="Enter reason for banning this user..."
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ban-duration" className="text-sm font-medium text-gray-300">
-                    Duration (leave empty for permanent)
-                  </Label>
-                  <Input
-                    id="ban-duration"
-                    type="number"
-                    value={banForm.duration}
-                    onChange={(e) => setBanForm(prev => ({ ...prev, duration: e.target.value }))}
-                    placeholder="Days (optional for permanent ban)"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-            )}
-            <AlertDialogFooter>
-              <AlertDialogCancel className="bg-gray-700 text-white hover:bg-gray-600">
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={showBanConfirm?.is_banned ? 
-                  () => showBanConfirm && handleUserAction(showBanConfirm.id, 'unban') :
-                  handleBanUser
-                }
-                disabled={!showBanConfirm?.is_banned && (!banForm.reason.trim())}
-                className={showBanConfirm?.is_banned 
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-red-600 hover:bg-red-700 text-white disabled:opacity-50'
-                }
-              >
-                {actionLoading === `ban-${showBanConfirm?.id}` ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {showBanConfirm?.is_banned ? 'Unbanning...' : 'Banning...'}
-                  </>
-                ) : (
-                  showBanConfirm?.is_banned ? 'Unban User' : 'Ban User'
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Suspend Confirmation Dialog */}
+        {/* Suspend/Activate Confirmation Dialog */}
         <AlertDialog open={!!showSuspendConfirm} onOpenChange={() => setShowSuspendConfirm(null)}>
-          <AlertDialogContent className="bg-gray-800 border-gray-700 max-w-lg">
+          <AlertDialogContent className="bg-gray-800 border-gray-700">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-white">
                 {showSuspendConfirm?.is_suspended ? 'Activate' : 'Suspend'} User
               </AlertDialogTitle>
               <AlertDialogDescription className="text-gray-300">
-                {showSuspendConfirm?.is_suspended 
-                  ? `Activate "${showSuspendConfirm?.email}" and restore their access.`
-                  : `Temporarily suspend "${showSuspendConfirm?.email}" from accessing the platform.`
-                }
+                Are you sure you want to {showSuspendConfirm?.is_suspended ? 'activate' : 'suspend'} &quot;{showSuspendConfirm?.email}&quot;?
               </AlertDialogDescription>
             </AlertDialogHeader>
-            {!showSuspendConfirm?.is_suspended && (
-              <div className="space-y-4 py-4">
-                <div>
-                  <Label htmlFor="suspend-reason" className="text-sm font-medium text-gray-300">
-                    Reason for Suspension *
-                  </Label>
-                  <Input
-                    id="suspend-reason"
-                    value={suspendForm.reason}
-                    onChange={(e) => setSuspendForm(prev => ({ ...prev, reason: e.target.value }))}
-                    placeholder="Enter reason for suspending this user..."
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="suspend-duration" className="text-sm font-medium text-gray-300">
-                    Duration (days) *
-                  </Label>
-                  <Input
-                    id="suspend-duration"
-                    type="number"
-                    value={suspendForm.duration}
-                    onChange={(e) => setSuspendForm(prev => ({ ...prev, duration: e.target.value }))}
-                    placeholder="7"
-                    min="1"
-                    max="365"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-            )}
             <AlertDialogFooter>
               <AlertDialogCancel className="bg-gray-700 text-white hover:bg-gray-600">
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
-                onClick={showSuspendConfirm?.is_suspended ? 
-                  () => showSuspendConfirm && handleUserAction(showSuspendConfirm.id, 'activate') :
-                  handleSuspendUser
-                }
-                disabled={!showSuspendConfirm?.is_suspended && (!suspendForm.reason.trim() || !suspendForm.duration.trim())}
+                onClick={() => showSuspendConfirm && handleUserAction(
+                  showSuspendConfirm.id, 
+                  showSuspendConfirm.is_suspended ? 'activate' : 'suspend'
+                )}
                 className={showSuspendConfirm?.is_suspended 
                   ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50'
+                  : 'bg-orange-600 hover:bg-orange-700 text-white'
                 }
               >
-                {actionLoading === `suspend-${showSuspendConfirm?.id}` ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {showSuspendConfirm?.is_suspended ? 'Activating...' : 'Suspending...'}
-                  </>
-                ) : (
-                  showSuspendConfirm?.is_suspended ? 'Activate' : 'Suspend'
-                )}
+                {showSuspendConfirm?.is_suspended ? 'Activate' : 'Suspend'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1199,290 +819,24 @@ export default function AdminUsersPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Edit User Modal */}
+        {/* Edit User Modal - You can expand this as needed */}
         <Dialog open={showEditUser} onOpenChange={setShowEditUser}>
-          <DialogContent className="bg-gray-800 border-gray-700 max-w-lg">
+          <DialogContent className="bg-gray-800 border-gray-700 max-w-md">
             <DialogHeader>
               <DialogTitle className="text-white">Edit User</DialogTitle>
               <DialogDescription className="text-gray-400">
-                Update user account settings and status.
+                Make changes to user account settings.
               </DialogDescription>
             </DialogHeader>
-            {selectedUser && (
-              <div className="space-y-6">
-                <div className="flex items-center space-x-4">
-                  <div className="relative">
-                    <Avatar className="h-16 w-16">
-                      <AvatarImage src={selectedUser.avatar_url} />
-                      <AvatarFallback className="bg-gray-700 text-white">
-                        {selectedUser.email.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">{selectedUser.email}</h3>
-                    <p className="text-sm text-gray-400 capitalize">{selectedUser.user_type}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="edit-email" className="text-sm font-medium text-gray-300">
-                      Email Address
-                    </Label>
-                    <Input
-                      id="edit-email"
-                      type="email"
-                      value={editForm.email}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="mt-1 bg-gray-700 border-gray-600 text-white"
-                      placeholder="Enter email address"
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label className="text-sm font-medium text-gray-300">Account Status</Label>
-                    
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="edit-active"
-                        checked={editForm.is_active}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, is_active: e.target.checked }))}
-                        className="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
-                      />
-                      <Label htmlFor="edit-active" className="text-sm text-gray-300">
-                        Active Account
-                      </Label>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="edit-banned"
-                        checked={editForm.is_banned}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, is_banned: e.target.checked }))}
-                        className="rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500"
-                      />
-                      <Label htmlFor="edit-banned" className="text-sm text-gray-300">
-                        Banned
-                      </Label>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="edit-suspended"
-                        checked={editForm.is_suspended}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, is_suspended: e.target.checked }))}
-                        className="rounded border-gray-600 bg-gray-700 text-yellow-600 focus:ring-yellow-500"
-                      />
-                      <Label htmlFor="edit-suspended" className="text-sm text-gray-300">
-                        Suspended
-                      </Label>
-                    </div>
-                  </div>
-
-                  {selectedUser.user_type === 'company' && selectedUser.company_name && (
-                    <div>
-                      <Label className="text-sm font-medium text-gray-300">Company</Label>
-                      <p className="mt-1 text-sm text-gray-400">{selectedUser.company_name}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button 
-                onClick={() => setShowEditUser(false)} 
-                variant="outline" 
-                className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                disabled={actionLoading === `edit-${selectedUser?.id}`}
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleEditUser}
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-                disabled={actionLoading === `edit-${selectedUser?.id}`}
-              >
-                {actionLoading === `edit-${selectedUser?.id}` ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Changes'
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Create User Dialog */}
-        <Dialog open={showCreateUser} onOpenChange={setShowCreateUser}>
-          <DialogContent className="bg-gray-800 border-gray-700 max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-white">Create New User</DialogTitle>
-              <DialogDescription className="text-gray-300">
-                Create a new user account with specified role and permissions.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-6 py-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="create-email" className="text-sm font-medium text-gray-300">
-                    Email Address *
-                  </Label>
-                  <Input
-                    id="create-email"
-                    type="email"
-                    value={createUserForm.email}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="user@example.com"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="create-password" className="text-sm font-medium text-gray-300">
-                    Password *
-                  </Label>
-                  <Input
-                    id="create-password"
-                    type="password"
-                    value={createUserForm.password}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, password: e.target.value }))}
-                    placeholder="••••••••"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="create-first-name" className="text-sm font-medium text-gray-300">
-                    First Name
-                  </Label>
-                  <Input
-                    id="create-first-name"
-                    value={createUserForm.first_name}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, first_name: e.target.value }))}
-                    placeholder="John"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="create-last-name" className="text-sm font-medium text-gray-300">
-                    Last Name
-                  </Label>
-                  <Input
-                    id="create-last-name"
-                    value={createUserForm.last_name}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, last_name: e.target.value }))}
-                    placeholder="Doe"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="create-user-type" className="text-sm font-medium text-gray-300">
-                  User Role *
-                </Label>
-                <select
-                  id="create-user-type"
-                  value={createUserForm.user_type}
-                  onChange={(e) => setCreateUserForm(prev => ({ ...prev, user_type: e.target.value as 'jobseeker' | 'company' | 'admin' | 'manager' }))}
-                  className="mt-1 w-full bg-gray-700 border-gray-600 text-white rounded-md px-3 py-2"
-                >
-                  <option value="jobseeker">Job Seeker</option>
-                  <option value="company">Company</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Administrator</option>
-                </select>
-                <p className="text-xs text-gray-400 mt-1">
-                  {createUserForm.user_type === 'manager' && 'Manager has limited admin functionality'}
-                  {createUserForm.user_type === 'admin' && 'Administrator has full system access'}
-                  {createUserForm.user_type === 'company' && 'Company can post jobs and manage applications'}
-                  {createUserForm.user_type === 'jobseeker' && 'Job seeker can browse and apply for jobs'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="create-phone" className="text-sm font-medium text-gray-300">
-                    Phone Number
-                  </Label>
-                  <Input
-                    id="create-phone"
-                    value={createUserForm.phone}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="+1234567890"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="create-location" className="text-sm font-medium text-gray-300">
-                    Location
-                  </Label>
-                  <Input
-                    id="create-location"
-                    value={createUserForm.location}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, location: e.target.value }))}
-                    placeholder="City, Country"
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
-
-              {createUserForm.user_type === 'company' && (
-                <div>
-                  <Label htmlFor="create-company-name" className="text-sm font-medium text-gray-300">
-                    Company Name
-                  </Label>
-                  <Input
-                    id="create-company-name"
-                    value={createUserForm.company_name}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, company_name: e.target.value }))}
-                    placeholder="Company Inc."
-                    className="mt-1 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-              )}
+            <div className="space-y-4">
+              <p className="text-gray-300">Edit functionality will be implemented here.</p>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline" 
-                onClick={() => {
-                  setShowCreateUser(false);
-                  setCreateUserForm({
-                    email: '',
-                    password: '',
-                    first_name: '',
-                    last_name: '',
-                    user_type: 'jobseeker',
-                    phone: '',
-                    location: '',
-                    company_name: ''
-                  });
-                }}
-                className="bg-gray-700 text-white hover:bg-gray-600 border-gray-600"
-              >
+              <Button onClick={() => setShowEditUser(false)} variant="outline" className="border-gray-600 text-gray-300">
                 Cancel
               </Button>
-              <Button 
-                onClick={handleCreateUser}
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-                disabled={!createUserForm.email || !createUserForm.password || actionLoading === 'creating-user'}
-              >
-                {actionLoading === 'creating-user' ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  'Create User'
-                )}
+              <Button className="bg-yellow-500 hover:bg-yellow-600 text-gray-900">
+                Save Changes
               </Button>
             </DialogFooter>
           </DialogContent>

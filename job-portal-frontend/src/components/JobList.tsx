@@ -37,7 +37,16 @@ export default function JobList({ jobs }: JobListProps) {
     }
   }
 
-  if (jobs.length === 0) {
+  // Deduplicate jobs by ID to prevent React key conflicts
+  const uniqueJobs = jobs.reduce((acc: Job[], current: Job) => {
+    const exists = acc.find(job => job.id === current.id);
+    if (!exists) {
+      acc.push(current);
+    }
+    return acc;
+  }, []);
+
+  if (uniqueJobs.length === 0) {
     return (
       <div className="text-center py-16">
         <div className="mb-6">
@@ -51,8 +60,8 @@ export default function JobList({ jobs }: JobListProps) {
 
   return (
     <>
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3" key={`joblist-${jobs.length}`}>
-        {jobs.map((job) => (
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3" key={`joblist-${uniqueJobs.length}`}>
+        {uniqueJobs.map((job) => (
           <Card 
             key={`job-${job.id}`} 
             className="gradient-card hover-lift cursor-pointer group border-primary/10 hover:border-primary/30 transition-all duration-300"
