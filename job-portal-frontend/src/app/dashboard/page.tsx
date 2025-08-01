@@ -168,6 +168,21 @@ export default function Dashboard() {
     )
   }
 
+  // Redirect admin users to admin dashboard
+  if (user.user_type === 'admin') {
+    window.location.href = '/admin-dashboard'
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+            <span className="text-gray-300">Redirecting to admin dashboard...</span>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   // Redirect company users to company dashboard
   if (user.user_type === 'company') {
     window.location.href = '/company-dashboard'
@@ -233,9 +248,7 @@ export default function Dashboard() {
               Welcome back, {user?.first_name || user?.email?.split('@')[0] || 'User'}! 👋
             </h1>
             <p className="mt-2 text-gray-400">
-              {user?.user_type === 'admin' 
-                ? 'Monitor system performance and manage platform operations.' 
-                : 'Track your job search progress and discover new opportunities.'}
+              Track your job search progress and discover new opportunities.
             </p>
           </div>
           <div className="mt-4 sm:mt-0 flex items-center space-x-3">
@@ -250,9 +263,13 @@ export default function Dashboard() {
                 <SelectItem value="1year">Last year</SelectItem>
               </SelectContent>
             </Select>
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+            <Button 
+              size="sm" 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => window.location.href = '/'}
+            >
               <Plus className="h-4 w-4 mr-2" />
-              {user?.user_type === 'admin' ? 'Add Report' : 'Apply to Job'}
+              Browse Jobs
             </Button>
           </div>
         </div>
@@ -260,32 +277,32 @@ export default function Dashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
-            title={user?.user_type === 'admin' ? 'Total Jobs' : 'Applications Sent'}
-            value={user?.user_type === 'admin' ? '1,234' : '42'}
+            title="Applications Sent"
+            value="42"
             change="12%"
             trend="up"
             description="vs last month"
             icon={Briefcase}
           />
           <StatCard
-            title={user?.user_type === 'admin' ? 'Active Companies' : 'Interview Invites'}
-            value={user?.user_type === 'admin' ? '89' : '8'}
+            title="Interview Invites"
+            value="8"
             change="5%"
             trend="up"
             description="vs last month"
             icon={Users}
           />
           <StatCard
-            title={user?.user_type === 'admin' ? 'Job Applications' : 'Profile Views'}
-            value={user?.user_type === 'admin' ? '12,459' : '156'}
+            title="Profile Views"
+            value="156"
             change="8%"
             trend="up"
             description="vs last month"
             icon={Eye}
           />
           <StatCard
-            title={user?.user_type === 'admin' ? 'Success Rate' : 'Response Rate'}
-            value={user?.user_type === 'admin' ? '94%' : '19%'}
+            title="Response Rate"
+            value="19%"
             change="2%"
             trend="down"
             description="vs last month"
