@@ -5,7 +5,7 @@ import sqlite3
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import jwt
 from ..utils.logger import setup_logger
 
@@ -680,6 +680,163 @@ class AuthService:
                 'success': False,
                 'message': 'Failed to update settings'
             }
+        
+        finally:
+            conn.close()
+
+    def get_pending_companies(self) -> List[Dict[str, Any]]:
+        """Get all companies pending approval"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT cp.id, cp.user_id, cp.company_name, cp.company_description, 
+                       cp.website, cp.industry, cp.company_size, cp.location, 
+                       cp.logo_url, cp.created_at, u.email, u.created_at as user_created_at
+                FROM company_profiles cp
+                JOIN users u ON cp.user_id = u.id
+                WHERE cp.is_approved = FALSE
+                ORDER BY cp.created_at DESC
+            ''')
+            
+            companies = []
+            for row in cursor.fetchall():
+                companies.append({
+                    'id': row[0],
+                    'user_id': row[1],
+                    'company_name': row[2],
+                    'company_description': row[3],
+                    'website': row[4],
+                    'industry': row[5],
+                    'company_size': row[6],
+                    'location': row[7],
+                    'logo_url': row[8],
+                    'created_at': row[9],
+                    'email': row[10],
+                    'user_created_at': row[11]
+                })
+            
+            return companies
+            
+        except Exception as e:
+            logger.error(f"Error getting pending companies: {e}")
+            return []
+        
+        finally:
+            conn.close()
+
+    def approve_company(self, company_id: int, admin_user_id: int) -> Dict[str, Any]:
+        """Approve a company profile"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Update company approval status
+            cursor.execute('''
+                UPDATE company_profiles 
+                SET is_approved = TRUE, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND is_approved = FALSE
+            ''', (company_id,))
+            
+            if cursor.rowcount == 0:
+                return {'success': False, 'message': 'Company not found or already approved'}
+            
+            conn.commit()
+            
+            # Log the approval action
+            logger.info(f"Company {company_id} approved by admin user {admin_user_id}")
+            
+            return {
+                'success': True,
+                'message': 'Company approved successfully',
+                'company_id': company_id
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error approving company: {e}")
+            return {'success': False, 'message': 'Failed to approve company'}
+        
+        finally:
+            conn.close()
+
+    def reject_company(self, company_id: int, admin_user_id: int, reason: str = '') -> Dict[str, Any]:
+        """Reject a company profile"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # For now, we'll delete the company profile and user account
+            # In production, you might want to keep records for audit purposes
+            
+            # First get the user_id
+            cursor.execute('SELECT user_id FROM company_profiles WHERE id = ?', (company_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                return {'success': False, 'message': 'Company not found'}
+            
+            user_id = result[0]
+            
+            # Delete company profile (this will cascade to user due to foreign key)
+            cursor.execute('DELETE FROM company_profiles WHERE id = ?', (company_id,))
+            cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+            
+            conn.commit()
+            
+            # Log the rejection action
+            logger.info(f"Company {company_id} rejected by admin user {admin_user_id}. Reason: {reason}")
+            
+            return {
+                'success': True,
+                'message': 'Company rejected and account removed',
+                'company_id': company_id
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error rejecting company: {e}")
+            return {'success': False, 'message': 'Failed to reject company'}
+        
+        finally:
+            conn.close()
+
+    def get_company_statistics(self) -> Dict[str, Any]:
+        """Get company statistics for admin dashboard"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            stats = {}
+            
+            # Total companies
+            cursor.execute('SELECT COUNT(*) FROM company_profiles')
+            stats['total_companies'] = cursor.fetchone()[0]
+            
+            # Pending approval
+            cursor.execute('SELECT COUNT(*) FROM company_profiles WHERE is_approved = FALSE')
+            stats['pending_companies'] = cursor.fetchone()[0]
+            
+            # Approved companies
+            cursor.execute('SELECT COUNT(*) FROM company_profiles WHERE is_approved = TRUE')
+            stats['approved_companies'] = cursor.fetchone()[0]
+            
+            # Companies by industry
+            cursor.execute('''
+                SELECT industry, COUNT(*) 
+                FROM company_profiles 
+                WHERE industry IS NOT NULL AND is_approved = TRUE
+                GROUP BY industry 
+                ORDER BY COUNT(*) DESC
+            ''')
+            stats['companies_by_industry'] = dict(cursor.fetchall())
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error getting company statistics: {e}")
+            return {}
         
         finally:
             conn.close()

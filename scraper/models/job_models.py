@@ -217,16 +217,22 @@ class JobService:
                 tags = json.dumps(tags)
             
             # Insert job posting
+            # Get the next available ID
+            cursor.execute('SELECT MAX(id) FROM job_postings')
+            max_id = cursor.fetchone()[0]
+            next_id = (max_id or 0) + 1
+            
             cursor.execute('''
                 INSERT INTO job_postings (
-                    title, company, location, job_type, work_mode, description, requirements,
+                    id, title, company, location, job_type, work_mode, description, requirements,
                     responsibilities, benefits, salary_min, salary_max, salary_currency,
                     experience_level, skills, education_requirements, apply_link, apply_email,
                     source_url, deadline, created_by_user_id, created_by_type, approved_by_admin,
                     status, meta_title, meta_description, tags, category, industry, company_size,
-                    contact_person, contact_phone, company_logo_url, company_website
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    contact_person, contact_phone, company_logo_url, company_website, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             ''', (
+                next_id,
                 job_data['title'],
                 job_data['company'],
                 job_data.get('location', ''),
@@ -262,7 +268,7 @@ class JobService:
                 job_data.get('company_website', '')
             ))
             
-            job_id = cursor.lastrowid
+            job_id = next_id
             conn.commit()
             
             # If created by admin, approve immediately
@@ -446,7 +452,7 @@ class JobService:
         
         try:
             # Build WHERE clause
-            where_conditions = ["jp.is_active = TRUE"]
+            where_conditions = ["jp.is_active = 1"]
             params = []
             
             # Search query
@@ -505,7 +511,10 @@ class JobService:
             
             # Only show approved jobs for non-admin users
             if not filters.get('show_unapproved', False):
-                where_conditions.append("jp.approved_by_admin = TRUE")
+                where_conditions.append("jp.approved_by_admin = 1")
+                logger.info("Filtering to approved jobs only")
+            else:
+                logger.info("Including unapproved jobs in search (admin view)")
             
             where_clause = " AND ".join(where_conditions)
             
@@ -536,7 +545,8 @@ class JobService:
                        jp.description, jp.salary_min, jp.salary_max, jp.salary_currency,
                        jp.experience_level, jp.skills, jp.category, jp.industry,
                        jp.posted_date, jp.deadline, jp.view_count, jp.is_featured,
-                       jp.created_by_type, jp.status, jp.company_logo_url,
+                       jp.created_by_type, jp.status, jp.company_logo_url, jp.approved_by_admin,
+                       jp.created_at, jp.admin_notes,
                        (SELECT COUNT(*) FROM job_applications WHERE job_id = jp.id) as application_count
                 FROM job_postings jp
                 WHERE {where_clause}
@@ -570,7 +580,10 @@ class JobService:
                     'created_by_type': row[18],
                     'status': row[19],
                     'company_logo_url': row[20],
-                    'application_count': row[21]
+                    'approved_by_admin': bool(row[21]),  # Convert SQLite boolean to Python boolean
+                    'created_at': row[22],  # Add created_at field for frontend
+                    'admin_notes': row[23],  # Add admin_notes field
+                    'application_count': row[24]
                 }
                 jobs.append(job_dict)
             
@@ -602,18 +615,38 @@ class JobService:
         cursor = conn.cursor()
         
         try:
+            # First check if the job exists and its current status
+            cursor.execute('''
+                SELECT id, title, approved_by_admin, status 
+                FROM job_postings WHERE id = ?
+            ''', (job_id,))
+            job = cursor.fetchone()
+            
+            logger.info(f"Approving job {job_id}: Current job data: {job}")
+            
+            if not job:
+                logger.warning(f"Job {job_id} not found")
+                return {'success': False, 'message': 'Job not found'}
+            
+            if job[2]:  # approved_by_admin is True
+                logger.warning(f"Job {job_id} is already approved")
+                return {'success': False, 'message': 'Job already approved'}
+            
             cursor.execute('''
                 UPDATE job_postings 
-                SET approved_by_admin = TRUE, status = 'active', 
+                SET approved_by_admin = 1, status = 'active', 
                     admin_notes = ?, approved_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND approved_by_admin = FALSE
             ''', (admin_notes, job_id))
             
+            logger.info(f"Update query affected {cursor.rowcount} rows")
+            
             if cursor.rowcount == 0:
                 return {'success': False, 'message': 'Job not found or already approved'}
             
             conn.commit()
+            logger.info(f"Job {job_id} approved successfully by user {approved_by_user_id}")
             
             return {
                 'success': True,
@@ -724,7 +757,7 @@ class JobService:
             stats = {}
             
             # Base conditions
-            base_conditions = ["jp.is_active = TRUE"]
+            base_conditions = ["jp.is_active = 1"]
             base_params = []
             
             # User-specific stats
@@ -799,7 +832,7 @@ class JobService:
                 cursor.execute("""
                     SELECT jp.company, COUNT(*) 
                     FROM job_postings jp 
-                    WHERE jp.is_active = TRUE
+                    WHERE jp.is_active = 1
                     GROUP BY jp.company
                     ORDER BY COUNT(*) DESC
                     LIMIT 10
@@ -824,7 +857,7 @@ class JobService:
             cursor.execute("""
                 SELECT id, name, slug, description, parent_id, display_order
                 FROM job_categories
-                WHERE is_active = TRUE
+                WHERE is_active = 1
                 ORDER BY display_order, name
             """)
             

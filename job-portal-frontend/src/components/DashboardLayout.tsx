@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState, AppDispatch } from '@/store/store'
 import { fetchUserProfile, logoutUser } from '@/store/slices/authSlice'
@@ -51,6 +51,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [mounted, setMounted] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [pendingCounts, setPendingCounts] = useState({
+    jobs: 0,
+    companies: 0,
+    applications: 0
+  })
 
   useEffect(() => {
     setMounted(true)
@@ -62,6 +67,69 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       dispatch(fetchUserProfile())
     }
   }, [dispatch, tokens.access_token, user])
+
+  // Fetch pending counts for admin users
+  const fetchPendingCounts = useCallback(async () => {
+    if (!tokens.access_token || user?.user_type !== 'admin') return
+    
+    try {
+      // Fetch pending jobs count
+      const jobsResponse = await fetch('/api/jobs/search?show_unapproved=true&limit=1000', {
+        headers: {
+          'Authorization': `Bearer ${tokens.access_token}`
+        }
+      })
+      
+      if (jobsResponse.ok) {
+        const jobsData = await jobsResponse.json()
+        const pendingJobs = jobsData.jobs?.filter((job: { status: string; approved_by_admin: boolean }) => 
+          !job.approved_by_admin && job.status !== 'inactive'
+        ).length || 0
+        
+        // Fetch pending companies count
+        const companiesResponse = await fetch('/api/companies/pending', {
+          headers: {
+            'Authorization': `Bearer ${tokens.access_token}`
+          }
+        })
+        
+        if (companiesResponse.ok) {
+          const companiesData = await companiesResponse.json()
+          const pendingCompanies = companiesData.companies?.length || 0
+          
+          setPendingCounts(prev => ({
+            ...prev,
+            jobs: pendingJobs,
+            companies: pendingCompanies
+          }))
+        } else {
+          console.error('Failed to fetch companies:', companiesResponse.status)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching pending counts:', error)
+    }
+  }, [tokens.access_token, user?.user_type])
+
+  useEffect(() => {
+    if (mounted && tokens.access_token && user?.user_type === 'admin') {
+      fetchPendingCounts()
+      
+      // Set up interval to refresh counts every 30 seconds
+      const interval = setInterval(fetchPendingCounts, 30000)
+      
+      // Listen for custom events to refresh counts immediately
+      const handleRefreshCounts = () => {
+        fetchPendingCounts()
+      }
+      window.addEventListener('refreshAdminCounts', handleRefreshCounts)
+      
+      return () => {
+        clearInterval(interval)
+        window.removeEventListener('refreshAdminCounts', handleRefreshCounts)
+      }
+    }
+  }, [mounted, tokens.access_token, user, fetchPendingCounts])
 
   const handleLogout = () => {
     dispatch(logoutUser())
@@ -166,7 +234,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         href: '/admin/jobs',
         icon: FileText,
         description: 'Review job postings',
-        badge: '3',
+        badge: pendingCounts.jobs > 0 ? pendingCounts.jobs.toString() : null,
+        protected: true
+      },
+      {
+        title: 'Company Approvals',
+        href: '/admin/companies',
+        icon: Briefcase,
+        description: 'Review company profiles',
+        badge: pendingCounts.companies > 0 ? pendingCounts.companies.toString() : null,
         protected: true
       }
     ] : [])

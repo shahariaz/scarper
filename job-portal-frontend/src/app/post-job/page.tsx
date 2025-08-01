@@ -245,7 +245,7 @@ export default function PostJob() {
         ...formData,
         status: isDraft ? 'draft' : formData.status,
         salary_min: formData.salary_min ? parseInt(formData.salary_min) : null,
-        salary_max: formData.salary_max ? parseInt(formData.salary_max) : null,
+        salary_max: formData.salary_max === 'Negotiable' ? 'Negotiable' : formData.salary_max ? parseInt(formData.salary_max) : null,
         skills: JSON.stringify(formData.skills),
         tags: JSON.stringify(formData.tags),
         deadline: formData.deadline || null
@@ -590,43 +590,85 @@ export default function PostJob() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-4">
+                  {/* Salary Type Selection */}
                   <div>
-                    <Label htmlFor="salary_min" className="text-gray-300">Minimum Salary</Label>
-                    <Input
-                      id="salary_min"
-                      type="number"
-                      value={formData.salary_min}
-                      onChange={(e) => handleInputChange('salary_min', e.target.value)}
-                      placeholder="50000"
-                      className="bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="salary_max" className="text-gray-300">Maximum Salary</Label>
-                    <Input
-                      id="salary_max"
-                      type="number"
-                      value={formData.salary_max}
-                      onChange={(e) => handleInputChange('salary_max', e.target.value)}
-                      placeholder="80000"
-                      className="bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="salary_currency" className="text-gray-300">Currency</Label>
-                    <Select value={formData.salary_currency} onValueChange={(value) => handleInputChange('salary_currency', value)}>
+                    <Label className="text-gray-300">Salary Type</Label>
+                    <Select 
+                      value={formData.salary_max === 'Negotiable' ? 'negotiable' : 'range'} 
+                      onValueChange={(value) => {
+                        if (value === 'negotiable') {
+                          handleInputChange('salary_min', '')
+                          handleInputChange('salary_max', 'Negotiable')
+                        } else {
+                          handleInputChange('salary_max', '')
+                        }
+                      }}
+                    >
                       <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-800 border-gray-700">
-                        <SelectItem value="BDT">BDT</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
+                        <SelectItem value="range">Salary Range</SelectItem>
+                        <SelectItem value="negotiable">Negotiable</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Salary Range Fields - Only show if not negotiable */}
+                  {formData.salary_max !== 'Negotiable' && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="salary_min" className="text-gray-300">Minimum Salary</Label>
+                        <Input
+                          id="salary_min"
+                          type="number"
+                          value={formData.salary_min}
+                          onChange={(e) => handleInputChange('salary_min', e.target.value)}
+                          placeholder="50000"
+                          className="bg-gray-700 border-gray-600 text-white"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="salary_max" className="text-gray-300">Maximum Salary</Label>
+                        <Input
+                          id="salary_max"
+                          type="number"
+                          value={formData.salary_max === 'Negotiable' ? '' : formData.salary_max}
+                          onChange={(e) => handleInputChange('salary_max', e.target.value)}
+                          placeholder="80000"
+                          className="bg-gray-700 border-gray-600 text-white"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="salary_currency" className="text-gray-300">Currency</Label>
+                        <Select value={formData.salary_currency} onValueChange={(value) => handleInputChange('salary_currency', value)}>
+                          <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-800 border-gray-700">
+                            <SelectItem value="BDT">BDT</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                            <SelectItem value="EUR">EUR</SelectItem>
+                            <SelectItem value="GBP">GBP</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Negotiable Display */}
+                  {formData.salary_max === 'Negotiable' && (
+                    <div className="p-4 bg-blue-600/10 border border-blue-600/20 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5 text-blue-400" />
+                        <span className="text-blue-300 font-medium">Salary: Negotiable</span>
+                      </div>
+                      <p className="text-blue-400 text-sm mt-1">
+                        Salary will be discussed during the interview process based on candidate experience and qualifications.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -894,6 +936,19 @@ export default function PostJob() {
                       <Globe className="h-4 w-4 mr-1" />
                       {formData.work_mode}
                     </span>
+                    {(formData.salary_min || formData.salary_max) && (
+                      <span className="flex items-center">
+                        <DollarSign className="h-4 w-4 mr-1" />
+                        {formData.salary_max === 'Negotiable' 
+                          ? 'Negotiable' 
+                          : formData.salary_min && formData.salary_max 
+                            ? `${formData.salary_min}-${formData.salary_max} ${formData.salary_currency}`
+                            : formData.salary_min 
+                              ? `${formData.salary_min}+ ${formData.salary_currency}`
+                              : `Up to ${formData.salary_max} ${formData.salary_currency}`
+                        }
+                      </span>
+                    )}
                   </div>
 
                   {formData.description && (

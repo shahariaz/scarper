@@ -551,6 +551,7 @@ def create_app():
     def approve_job(job_id):
         """Approve a job posting (admin only)"""
         try:
+            logger.info(f"Admin approve job request - Job ID: {job_id}, User ID: {request.current_user_id}")
             data = request.get_json() or {}
             admin_notes = data.get('admin_notes', '')
             
@@ -560,6 +561,7 @@ def create_app():
                 admin_notes
             )
             
+            logger.info(f"Approve job result: {result}")
             status_code = 200 if result['success'] else 400
             return jsonify(result), status_code
             
@@ -617,7 +619,100 @@ def create_app():
                 'message': 'Internal server error'
             }), 500
     
+    # Company Management Endpoints
+    @app.route('/api/companies/pending', methods=['GET'])
+    @token_required
+    @admin_required
+    def get_pending_companies():
+        """Get companies pending approval (admin only)"""
+        try:
+            companies = auth_service.get_pending_companies()
+            
+            return jsonify({
+                'success': True,
+                'companies': companies
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting pending companies: {e}")
+            return jsonify({
+                'success': False, 
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/companies/<int:company_id>/approve', methods=['POST'])
+    @token_required
+    @admin_required
+    def approve_company(company_id):
+        """Approve a company profile (admin only)"""
+        try:
+            result = auth_service.approve_company(
+                company_id, 
+                request.current_user_id
+            )
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error approving company {company_id}: {e}")
+            return jsonify({
+                'success': False, 
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/companies/<int:company_id>/reject', methods=['POST'])
+    @token_required
+    @admin_required
+    def reject_company(company_id):
+        """Reject a company profile (admin only)"""
+        try:
+            data = request.get_json() or {}
+            reason = data.get('reason', '')
+            
+            result = auth_service.reject_company(
+                company_id, 
+                request.current_user_id,
+                reason
+            )
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error rejecting company {company_id}: {e}")
+            return jsonify({
+                'success': False, 
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/companies/statistics', methods=['GET'])
+    @token_required
+    @admin_required
+    def get_company_statistics():
+        """Get company statistics (admin only)"""
+        try:
+            stats = auth_service.get_company_statistics()
+            
+            return jsonify({
+                'success': True,
+                'statistics': stats
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting company statistics: {e}")
+            return jsonify({
+                'success': False, 
+                'message': 'Internal server error'
+            }), 500
+    
     @app.route('/api/jobs/categories', methods=['GET'])
+    def get_job_categories():
+        """Get job categories"""
     def get_job_categories():
         """Get all job categories"""
         try:
@@ -773,7 +868,7 @@ def create_app():
     
     @app.route('/api/search', methods=['GET'])
     def search_jobs_legacy():
-        """Legacy endpoint for job search - uses original scraped data"""
+        """Search endpoint that combines legacy scraped jobs with approved job postings"""
         try:
             conn = sqlite3.connect('jobs.db')
             cursor = conn.cursor()
@@ -785,100 +880,151 @@ def create_app():
             job_type = request.args.get('type')
             experience = request.args.get('experience')
             
-            # Build search query
-            where_conditions = ['is_active = 1 OR is_active IS NULL']
-            params = []
-            
-            if query:
-                where_conditions.append('(title LIKE ? OR company LIKE ? OR description LIKE ? OR skills LIKE ?)')
-                params.extend([f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'])
-            
-            if company:
-                where_conditions.append('company LIKE ?')
-                params.append(f'%{company}%')
-            
-            if location:
-                where_conditions.append('location LIKE ?')
-                params.append(f'%{location}%')
-                
-            if job_type:
-                where_conditions.append('type LIKE ?')
-                params.append(f'%{job_type}%')
-                
-            if experience:
-                where_conditions.append('experience_level LIKE ?')
-                params.append(f'%{experience}%')
-            
-            where_clause = ' AND '.join(where_conditions)
-            
             # Pagination
             page = int(request.args.get('page', 1))
             per_page = min(int(request.args.get('per_page', 20)), 100)
             offset = (page - 1) * per_page
             
-            # Get total count
-            count_query = f'SELECT COUNT(*) FROM jobs WHERE {where_clause}'
-            cursor.execute(count_query, params)
-            total = cursor.fetchone()[0]
+            # Build conditions for legacy jobs table
+            legacy_conditions = []
+            legacy_params = []
             
-            # Get jobs with pagination
-            search_query = f'''
-                SELECT id, title, company, location, type, description, apply_link, 
-                       source_url, scraped_at, requirements, responsibilities, benefits,
-                       salary_range, experience_level, skills, posted_date, view_count
+            if query:
+                legacy_conditions.append('(title LIKE ? OR company LIKE ? OR description LIKE ?)')
+                legacy_params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
+            
+            if company:
+                legacy_conditions.append('company LIKE ?')
+                legacy_params.append(f'%{company}%')
+            
+            if location:
+                legacy_conditions.append('location LIKE ?')
+                legacy_params.append(f'%{location}%')
+                
+            if job_type:
+                legacy_conditions.append('type LIKE ?')
+                legacy_params.append(f'%{job_type}%')
+                
+            if experience:
+                legacy_conditions.append('experience_level LIKE ?')
+                legacy_params.append(f'%{experience}%')
+            
+            legacy_where = ' AND '.join(legacy_conditions) if legacy_conditions else '1=1'
+            
+            # Build conditions for job_postings table
+            posting_conditions = []
+            posting_params = []
+            
+            if query:
+                posting_conditions.append('(title LIKE ? OR company LIKE ? OR description LIKE ?)')
+                posting_params.extend([f'%{query}%', f'%{query}%', f'%{query}%'])
+            
+            if company:
+                posting_conditions.append('company LIKE ?')
+                posting_params.append(f'%{company}%')
+            
+            if location:
+                posting_conditions.append('location LIKE ?')
+                posting_params.append(f'%{location}%')
+                
+            if job_type:
+                posting_conditions.append('job_type LIKE ?')
+                posting_params.append(f'%{job_type}%')
+                
+            if experience:
+                posting_conditions.append('experience_level LIKE ?')
+                posting_params.append(f'%{experience}%')
+            
+            posting_where = ' AND '.join(posting_conditions) if posting_conditions else '1=1'
+            
+            print(f"API Search called with: query='{query}', company='{company}', location='{location}', type='{job_type}', experience='{experience}'")
+            
+            # Union query to get both legacy jobs and approved job postings
+            union_query = f'''
+                SELECT 
+                    id, title, company, location, type, experience_level, 
+                    description, skills, apply_link, NULL as apply_email, posted_date,
+                    salary_range as salary, 'legacy' as source_type
                 FROM jobs 
-                WHERE {where_clause}
-                ORDER BY scraped_at DESC 
+                WHERE (is_active = 1 OR is_active IS NULL) AND {legacy_where}
+                
+                UNION ALL
+                
+                SELECT 
+                    id, title, company, location, job_type as type, experience_level,
+                    description, skills, apply_link, apply_email, posted_date,
+                    CASE 
+                        WHEN salary_max = 'Negotiable' THEN 'Negotiable'
+                        WHEN salary_min IS NOT NULL AND salary_max IS NOT NULL THEN 
+                            salary_min || '-' || salary_max || ' ' || COALESCE(salary_currency, 'BDT')
+                        WHEN salary_min IS NOT NULL THEN 
+                            salary_min || '+ ' || COALESCE(salary_currency, 'BDT')
+                        WHEN salary_max IS NOT NULL AND salary_max != 'Negotiable' THEN 
+                            'Up to ' || salary_max || ' ' || COALESCE(salary_currency, 'BDT')
+                        ELSE NULL
+                    END as salary,
+                    'job_posting' as source_type
+                FROM job_postings 
+                WHERE approved_by_admin = 1 AND status = 'active' AND {posting_where}
+                
+                ORDER BY posted_date DESC
                 LIMIT ? OFFSET ?
             '''
-            cursor.execute(search_query, params + [per_page, offset])
             
-            jobs = []
-            for row in cursor.fetchall():
-                job = {
-                    'id': row[0],
-                    'title': row[1],
-                    'company': row[2],
-                    'location': row[3] or '',
-                    'job_type': row[4] or 'Full-time',
-                    'description': row[5] or '',
-                    'apply_link': row[6] or '',
-                    'source_url': row[7] or '',
-                    'posted_date': row[15] or row[8],
-                    'scraped_at': row[8],
-                    'requirements': row[9] or '',
-                    'responsibilities': row[10] or '',
-                    'benefits': row[11] or '',
-                    'salary': row[12] or '',
-                    'experience_level': row[13] or '',
-                    'skills': row[14] or '',
-                    'status': 'active',
-                    'view_count': row[16] or 0
+            # Add pagination params (twice for each SELECT)
+            query_params = legacy_params + posting_params + [per_page, offset]
+            
+            cursor.execute(union_query, query_params)
+            jobs = cursor.fetchall()
+            
+            # Get total count from both tables
+            count_query = f'''
+                SELECT COUNT(*) FROM (
+                    SELECT id FROM jobs WHERE (is_active = 1 OR is_active IS NULL) AND {legacy_where}
+                    UNION ALL
+                    SELECT id FROM job_postings WHERE approved_by_admin = 1 AND status = 'active' AND {posting_where}
+                )
+            '''
+            cursor.execute(count_query, legacy_params + posting_params)
+            total = cursor.fetchone()[0]
+            
+            # Format jobs
+            formatted_jobs = []
+            for job in jobs:
+                formatted_job = {
+                    'id': job[0],
+                    'title': job[1],
+                    'company': job[2],
+                    'location': job[3],
+                    'job_type': job[4],
+                    'experience_level': job[5],
+                    'description': job[6],
+                    'skills': job[7],
+                    'apply_link': job[8],
+                    'apply_email': job[9],
+                    'posted_date': job[10],
+                    'salary': job[11],
+                    'source_type': job[12]
                 }
-                jobs.append(job)
+                formatted_jobs.append(formatted_job)
             
-            pages = (total + per_page - 1) // per_page
+            print(f"Search result: {len(formatted_jobs)} jobs found, total: {total}")
             
             conn.close()
             
             return jsonify({
-                'jobs': jobs,
+                'success': True,
+                'jobs': formatted_jobs,
                 'total': total,
                 'page': page,
                 'per_page': per_page,
-                'pages': pages
+                'total_pages': (total + per_page - 1) // per_page
             })
             
         except Exception as e:
-            logger.error(f"Error in legacy search endpoint: {e}")
-            return jsonify({
-                'jobs': [],
-                'total': 0,
-                'page': 1,
-                'per_page': 20,
-                'pages': 0
-            }), 500
-    
+            logger.error(f"Error in search: {e}")
+            return jsonify({'success': False, 'message': 'Search failed'}), 500
+
     @app.route('/api/job/<int:job_id>', methods=['GET'])
     def get_job_legacy(job_id):
         """Legacy endpoint for single job - uses original scraped data"""
