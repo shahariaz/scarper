@@ -3219,6 +3219,17 @@ def create_app():
             'message': 'Internal server error'
         }), 500
     
+    # Test endpoint for Socket.IO
+    @app.route('/api/test-socketio', methods=['GET'])
+    def test_socketio():
+        """Test Socket.IO connection"""
+        try:
+            # Emit a test message to all connected clients
+            socketio.emit('test_message', {'message': 'Socket.IO is working!'})
+            return jsonify({'status': 'success', 'message': 'Test message sent'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+    
     return app, socketio
 
 if __name__ == '__main__':

@@ -1,15 +1,17 @@
 import React from 'react';
+import { io, Socket } from 'socket.io-client';
 import { store } from '../store/store';
 import { 
   addNewNotification, 
   updateCommentLikeCount, 
   updateFollowCount 
 } from '../store/slices/socialSlice';
+import { updateBlogLikes } from '../store/slices/blogsSlice';
 
 type EventCallback = (data: Record<string, unknown>) => void;
 
 class WebSocketService {
-  private socket: WebSocket | null = null;
+  private socket: Socket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
@@ -17,11 +19,12 @@ class WebSocketService {
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
 
   constructor() {
-    this.connect();
+    // Don't auto-connect on construction
+    // Connection will be initiated when auth token is available
   }
 
   connect() {
-    if (this.isConnecting || (this.socket && this.socket.readyState === WebSocket.CONNECTING)) {
+    if (this.isConnecting || (this.socket && this.socket.connected)) {
       return;
     }
 
@@ -30,58 +33,95 @@ class WebSocketService {
     try {
       // Get auth token
       const state = store.getState();
-      const token = state.auth.tokens.access_token;
+      const token = state.auth.tokens?.access_token;
       
       if (!token) {
-        console.log('No auth token, skipping WebSocket connection');
+        console.log('No auth token, skipping Socket.IO connection');
         this.isConnecting = false;
         return;
       }
 
-      // Connect to WebSocket with auth token
-      const wsUrl = process.env.NODE_ENV === 'production' 
-        ? `wss://${window.location.host}/ws`
-        : 'ws://localhost:5000/ws';
-      
-      this.socket = new WebSocket(`${wsUrl}?token=${token}`);
+      console.log('Connecting to Socket.IO with token...');
 
-      this.socket.onopen = () => {
-        console.log('WebSocket connected');
+      // Connect to Socket.IO with auth token
+      const socketUrl = process.env.NODE_ENV === 'production' 
+        ? `https://${window.location.host}`
+        : 'http://localhost:5000';
+      
+      console.log('Connecting to Socket.IO at:', socketUrl);
+      
+      this.socket = io(socketUrl, {
+        auth: {
+          token: token
+        },
+        transports: ['websocket', 'polling'],
+        autoConnect: true
+      });
+
+      this.socket.on('connect', () => {
+        console.log('Socket.IO connected with session ID:', this.socket?.id);
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
-        
-        // Send authentication
-        this.send('auth', { token });
-      };
+      });
 
-      this.socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.handleMessage(data);
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
-        }
-      };
-
-      this.socket.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
+      this.socket.on('disconnect', (reason) => {
+        console.log('Socket.IO disconnected:', reason);
         this.isConnecting = false;
-        this.socket = null;
         
-        // Attempt to reconnect if not a clean close
-        if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+        // Attempt to reconnect if not a clean disconnect
+        if (reason !== 'io client disconnect' && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.scheduleReconnect();
         }
-      };
+      });
 
-      this.socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      this.socket.on('connect_error', (error) => {
+        console.error('Socket.IO connection error:', error);
         this.isConnecting = false;
-      };
+        this.scheduleReconnect();
+      });
+
+      // Register specific event handlers
+      this.socket.on('blog_liked', (data) => {
+        console.log('Received blog_liked event:', data);
+        this.handleMessage({ type: 'blog_liked', payload: data });
+      });
+
+      this.socket.on('blog_unliked', (data) => {
+        console.log('Received blog_unliked event:', data);
+        this.handleMessage({ type: 'blog_unliked', payload: data });
+      });
+
+      this.socket.on('comment_liked', (data) => {
+        this.handleMessage({ type: 'comment_liked', payload: data });
+      });
+
+      this.socket.on('comment_unliked', (data) => {
+        this.handleMessage({ type: 'comment_unliked', payload: data });
+      });
+
+      this.socket.on('new_comment', (data) => {
+        this.handleMessage({ type: 'new_comment', payload: data });
+      });
+
+      this.socket.on('comment_reply', (data) => {
+        this.handleMessage({ type: 'comment_reply', payload: data });
+      });
+
+      this.socket.on('notification', (data) => {
+        this.handleMessage({ type: 'notification', payload: data });
+      });
+
+      this.socket.on('user_followed', (data) => {
+        this.handleMessage({ type: 'user_followed', payload: data });
+      });
+
+      this.socket.on('user_unfollowed', (data) => {
+        this.handleMessage({ type: 'user_unfollowed', payload: data });
+      });
 
     } catch (error) {
-      console.error('Error creating WebSocket:', error);
+      console.error('Error creating Socket.IO connection:', error);
       this.isConnecting = false;
       this.scheduleReconnect();
     }
@@ -116,55 +156,79 @@ class WebSocketService {
         
       case 'comment_liked':
         store.dispatch(updateCommentLikeCount({ 
-          commentId: (payload as any).comment_id, 
+          commentId: (payload as Record<string, unknown>).comment_id as number, 
           increment: true 
         }));
         break;
         
       case 'comment_unliked':
         store.dispatch(updateCommentLikeCount({ 
-          commentId: (payload as any).comment_id, 
+          commentId: (payload as Record<string, unknown>).comment_id as number, 
           increment: false 
         }));
         break;
         
       case 'user_followed':
         store.dispatch(updateFollowCount({
-          userId: (payload as any).user_id,
-          followers: (payload as any).followers_count,
-          following: (payload as any).following_count
+          userId: (payload as Record<string, unknown>).user_id as number,
+          followers: (payload as Record<string, unknown>).followers_count as number,
+          following: (payload as Record<string, unknown>).following_count as number
         }));
         break;
         
       case 'user_unfollowed':
         store.dispatch(updateFollowCount({
-          userId: (payload as any).user_id,
-          followers: (payload as any).followers_count,
-          following: (payload as any).following_count
+          userId: (payload as Record<string, unknown>).user_id as number,
+          followers: (payload as Record<string, unknown>).followers_count as number,
+          following: (payload as Record<string, unknown>).following_count as number
         }));
+        break;
+        
+      case 'blog_liked':
+        // Update blog like count in Redux store
+        if ((payload as Record<string, unknown>).blog_id && typeof (payload as Record<string, unknown>).likes_count === 'number') {
+          store.dispatch(updateBlogLikes({
+            blogId: (payload as Record<string, unknown>).blog_id as number,
+            likesCount: (payload as Record<string, unknown>).likes_count as number
+          }));
+        }
+        // Also forward to custom event listeners
+        this.emit(type, payload as Record<string, unknown>);
+        break;
+        
+      case 'blog_unliked':
+        // Update blog like count in Redux store
+        if ((payload as Record<string, unknown>).blog_id && typeof (payload as Record<string, unknown>).likes_count === 'number') {
+          store.dispatch(updateBlogLikes({
+            blogId: (payload as Record<string, unknown>).blog_id as number,
+            likesCount: (payload as Record<string, unknown>).likes_count as number
+          }));
+        }
+        // Also forward to custom event listeners
+        this.emit(type, payload as Record<string, unknown>);
         break;
         
       case 'new_comment':
         // Trigger comment list refresh
-        this.emit(type, payload);
+        this.emit(type, payload as Record<string, unknown>);
         break;
         
       case 'comment_reply':
         // Trigger comment replies refresh
-        this.emit(type, payload);
+        this.emit(type, payload as Record<string, unknown>);
         break;
         
       default:
         // Forward to custom event listeners
-        this.emit(type as string, payload);
+        this.emit(type as string, payload as Record<string, unknown>);
     }
   }
 
   send(type: string, payload: Record<string, unknown>) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type, payload }));
+    if (this.socket && this.socket.connected) {
+      this.socket.emit(type, payload);
     } else {
-      console.warn('WebSocket not connected, cannot send message:', type);
+      console.warn('Socket.IO not connected, cannot send message:', type);
     }
   }
 
@@ -227,13 +291,13 @@ class WebSocketService {
 
   // Get connection status
   get isConnected() {
-    return this.socket && this.socket.readyState === WebSocket.OPEN;
+    return this.socket?.connected || false;
   }
 
   // Disconnect
   disconnect() {
     if (this.socket) {
-      this.socket.close(1000, 'Client disconnect');
+      this.socket.disconnect();
       this.socket = null;
     }
     this.reconnectAttempts = this.maxReconnectAttempts; // Prevent reconnection
@@ -245,6 +309,19 @@ class WebSocketService {
     this.reconnectAttempts = 0;
     this.reconnectDelay = 1000;
     setTimeout(() => this.connect(), 100);
+  }
+
+  // Connect when authenticated
+  connectIfAuthenticated() {
+    const state = store.getState();
+    const token = state.auth.tokens?.access_token;
+    
+    if (token && !this.isConnected) {
+      console.log('Auth token available, connecting to Socket.IO...');
+      this.connect();
+    } else if (!token) {
+      console.log('No auth token available for Socket.IO connection');
+    }
   }
 }
 

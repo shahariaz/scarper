@@ -404,6 +404,10 @@ class SocialService:
                     'blog', blog_id
                 )
             
+            # Get updated likes count
+            cursor.execute('SELECT likes_count FROM blogs WHERE id = ?', (blog_id,))
+            likes_count = cursor.fetchone()[0]
+            
             # Log activity
             self._log_activity(
                 conn, user_id, 'blog_like', 'blog', blog_id,
@@ -415,7 +419,8 @@ class SocialService:
             
             return {
                 'success': True,
-                'message': 'Blog liked successfully'
+                'message': 'Blog liked successfully',
+                'likes_count': likes_count
             }
             
         except Exception as e:
@@ -442,6 +447,10 @@ class SocialService:
                 WHERE id = ? AND likes_count > 0
             ''', (blog_id,))
             
+            # Get updated likes count
+            cursor.execute('SELECT likes_count FROM blogs WHERE id = ?', (blog_id,))
+            likes_count = cursor.fetchone()[0]
+            
             # Log activity
             self._log_activity(
                 conn, user_id, 'blog_unlike', 'blog', blog_id,
@@ -453,7 +462,8 @@ class SocialService:
             
             return {
                 'success': True,
-                'message': 'Blog unliked successfully'
+                'message': 'Blog unliked successfully',
+                'likes_count': likes_count
             }
             
         except Exception as e:

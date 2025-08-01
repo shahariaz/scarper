@@ -288,7 +288,7 @@ export const likeBlog = createAsyncThunk(
   async (blogId: number, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState() as RootState;
-      const response = await fetch(`/api/blogs/${blogId}/like`, {
+      const response = await fetch(`http://localhost:5000/api/blogs/${blogId}/like`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${auth.tokens.access_token}`,
@@ -301,7 +301,8 @@ export const likeBlog = createAsyncThunk(
         return rejectWithValue((error as Error).message);
       }
       
-      return { blogId };
+      const data = await response.json();
+      return { blogId, likesCount: data.likes_count };
     } catch (error: unknown) {
       return rejectWithValue((error as Error).message);
     }
@@ -313,7 +314,7 @@ export const unlikeBlog = createAsyncThunk(
   async (blogId: number, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState() as RootState;
-      const response = await fetch(`/api/blogs/${blogId}/unlike`, {
+      const response = await fetch(`http://localhost:5000/api/blogs/${blogId}/unlike`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${auth.tokens.access_token}`,
@@ -326,7 +327,8 @@ export const unlikeBlog = createAsyncThunk(
         return rejectWithValue((error as Error).message);
       }
       
-      return { blogId };
+      const data = await response.json();
+      return { blogId, likesCount: data.likes_count };
     } catch (error: unknown) {
       return rejectWithValue((error as Error).message);
     }
@@ -338,7 +340,7 @@ export const checkBlogLikeStatus = createAsyncThunk(
   async (blogId: number, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState() as RootState;
-      const response = await fetch(`/api/blogs/${blogId}/is-liked`, {
+      const response = await fetch(`http://localhost:5000/api/blogs/${blogId}/is-liked`, {
         headers: {
           'Authorization': `Bearer ${auth.tokens.access_token}`,
         },
@@ -362,7 +364,9 @@ export const addComment = createAsyncThunk(
   async ({ blogId, content, parentId }: { blogId: number; content: string; parentId?: number }, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState() as RootState;
-      const response = await fetch(`/api/blogs/${blogId}/comments`, {
+      const url = `http://localhost:5000/api/blogs/${blogId}/comments`;
+      console.log('addComment API URL:', url);
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${auth.tokens.access_token}`,
@@ -388,7 +392,9 @@ export const fetchComments = createAsyncThunk(
   'social/fetchComments',
   async ({ blogId, page = 1 }: { blogId: number; page?: number }, { rejectWithValue }) => {
     try {
-      const response = await fetch(`/api/blogs/${blogId}/comments?page=${page}`);
+      const url = `http://localhost:5000/api/blogs/${blogId}/comments?page=${page}`;
+      console.log('fetchComments API URL:', url);
+      const response = await fetch(url);
       
       if (!response.ok) {
         const error = await response.json();
@@ -408,7 +414,7 @@ export const likeComment = createAsyncThunk(
   async (commentId: number, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState() as RootState;
-      const response = await fetch(`/api/comments/${commentId}/like`, {
+      const response = await fetch(`http://localhost:5000/api/comments/${commentId}/like`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${auth.tokens.access_token}`,
@@ -433,7 +439,7 @@ export const unlikeComment = createAsyncThunk(
   async (commentId: number, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState() as RootState;
-      const response = await fetch(`/api/comments/${commentId}/unlike`, {
+      const response = await fetch(`http://localhost:5000/api/comments/${commentId}/unlike`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${auth.tokens.access_token}`,
@@ -660,6 +666,7 @@ const socialSlice = createSlice({
       .addCase(likeBlog.fulfilled, (state, action) => {
         state.loading.like = false;
         state.blogLikes[action.payload.blogId] = true;
+        // Note: Blog like count will be updated via WebSocket or by dispatching updateBlogLikes separately
       })
       .addCase(likeBlog.rejected, (state, action) => {
         state.loading.like = false;
@@ -672,6 +679,7 @@ const socialSlice = createSlice({
       .addCase(unlikeBlog.fulfilled, (state, action) => {
         state.loading.like = false;
         state.blogLikes[action.payload.blogId] = false;
+        // Note: Blog like count will be updated via WebSocket or by dispatching updateBlogLikes separately
       })
       .addCase(unlikeBlog.rejected, (state, action) => {
         state.loading.like = false;

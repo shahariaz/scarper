@@ -1,0 +1,26 @@
+{
+  "blog": {
+    "author_email": "user2@test.com",
+    "author_id": 18,
+    "author_type": "jobseeker",
+    "content": "<p>This is my first blog post about social features!</p>",
+    "created_at": "2025-08-01 13:08:38",
+    "excerpt": "A blog post about social features",
+    "featured_image": "",
+    "id": 7,
+    "is_featured": false,
+    "is_published": true,
+    "likes_count": 1,
+    "meta_description": "",
+    "slug": "my-first-blog-post-3718",
+    "tags": [
+      "social",
+      "features",
+      "blog"
+    ],
+    "title": "My First Blog Post",
+    "updated_at": "2025-08-01 13:08:38",
+    "views_count": 61
+  },
+  "success": true
+}

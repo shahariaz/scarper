@@ -20,6 +20,7 @@ class WebSocketManager:
         @self.socketio.on('connect')
         def handle_connect(auth=None):
             try:
+                logger.info(f"WebSocket connection attempt - auth: {auth}")
                 # Get token from query parameters
                 token = auth.get('token') if auth else None
                 if not token:

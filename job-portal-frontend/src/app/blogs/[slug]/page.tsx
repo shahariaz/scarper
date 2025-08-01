@@ -65,10 +65,13 @@ export default function BlogViewPage() {
     };
   }, [dispatch, slug]);
 
-  // Check like status when blog loads
+  // Check like status when blog loads and connect to WebSocket if authenticated
   useEffect(() => {
     if (currentBlog && isAuthenticated) {
       dispatch(checkBlogLikeStatus(currentBlog.id));
+      
+      // Ensure WebSocket is connected for authenticated users
+      webSocketService.connectIfAuthenticated();
       
       // Join WebSocket room for this blog to receive real-time updates
       webSocketService.subscribeToBlog(currentBlog.id);
@@ -127,10 +130,20 @@ export default function BlogViewPage() {
 
     try {
       if (isLiked) {
-        await dispatch(unlikeBlog(currentBlog.id)).unwrap();
+        const result = await dispatch(unlikeBlog(currentBlog.id)).unwrap();
+        // Update the blog like count immediately
+        dispatch(updateBlogLikes({
+          blogId: currentBlog.id,
+          likesCount: result.likesCount
+        }));
         toast.success('Post unliked');
       } else {
-        await dispatch(likeBlog(currentBlog.id)).unwrap();
+        const result = await dispatch(likeBlog(currentBlog.id)).unwrap();
+        // Update the blog like count immediately
+        dispatch(updateBlogLikes({
+          blogId: currentBlog.id,
+          likesCount: result.likesCount
+        }));
         toast.success('Post liked!');
       }
     } catch (error) {
@@ -341,10 +354,22 @@ export default function BlogViewPage() {
               
               {/* Engagement Stats */}
               <div className="flex items-center space-x-6 text-white/80">
-                <div className="flex items-center space-x-2 bg-white/10 rounded-full px-4 py-2">
-                  <Heart className="w-5 h-5" />
+                <button
+                  onClick={handleLike}
+                  disabled={socialLoading.like}
+                  className={`flex items-center space-x-2 rounded-full px-4 py-2 transition-all duration-200 ${
+                    isLiked 
+                      ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30' 
+                      : 'bg-white/10 hover:bg-white/20'
+                  } ${socialLoading.like ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <Heart 
+                    className={`w-5 h-5 transition-all duration-200 ${
+                      isLiked ? 'fill-red-300 text-red-300' : ''
+                    }`} 
+                  />
                   <span className="font-medium">{currentBlog.likes_count}</span>
-                </div>
+                </button>
               </div>
             </div>
           </div>
