@@ -310,10 +310,19 @@ export default function AdminDashboard() {
             <Button 
               size="sm" 
               className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => window.location.href = '/admin/jobs'}
+            >
+              <Briefcase className="h-4 w-4 mr-2" />
+              Manage Jobs
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="bg-green-600/20 border-green-600/30 text-green-300 hover:bg-green-600 hover:text-white"
               onClick={() => window.location.href = '/post-job'}
             >
               <Plus className="h-4 w-4 mr-2" />
-              Post Job (Admin)
+              Post Job
             </Button>
             <Button 
               size="sm" 
@@ -530,6 +539,14 @@ export default function AdminDashboard() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-white">Jobs Awaiting Approval</CardTitle>
                 <div className="flex items-center space-x-2">
+                  <Button 
+                    size="sm" 
+                    className="bg-blue-600 hover:bg-blue-700"
+                    onClick={() => window.location.href = '/admin/jobs'}
+                  >
+                    <Briefcase className="h-4 w-4 mr-2" />
+                    Manage All Jobs
+                  </Button>
                   <Button size="sm" variant="outline">
                     <Filter className="h-4 w-4 mr-2" />
                     Filter
