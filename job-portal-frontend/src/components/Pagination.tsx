@@ -2,7 +2,7 @@
 
 import { useDispatch, useSelector } from 'react-redux'
 import { RootState } from '@/store/store'
-import { setPage } from '@/store/slices/jobsSlice'
+import { setPage, setPerPage } from '@/store/slices/jobsSlice'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
@@ -18,6 +18,13 @@ export default function Pagination() {
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pages) {
       dispatch(setPage(newPage))
+    }
+  }
+
+  const handlePerPageChange = (newPerPage: string) => {
+    const perPageValue = parseInt(newPerPage, 10)
+    if (perPageValue > 0) {
+      dispatch(setPerPage(perPageValue))
     }
   }
 
@@ -129,9 +136,7 @@ export default function Pagination() {
         <span className="text-muted-foreground">Show:</span>
         <Select
           value={per_page.toString()}
-          onValueChange={(value) => {
-            // We'll implement this when needed
-          }}
+          onValueChange={handlePerPageChange}
         >
           <SelectTrigger className="w-20 bg-secondary/50 border-yellow-400/20">
             <SelectValue />

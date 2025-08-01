@@ -4,13 +4,16 @@ import { useQuery } from '@tanstack/react-query'
 import { useDispatch, useSelector } from 'react-redux'
 import { useEffect, useMemo, memo } from 'react'
 import { useDebounce } from 'use-debounce'
+import { useSearchParams } from 'next/navigation'
 import { RootState } from '../store/store'
-import { setJobsData, setLoading, setError } from '../store/slices/jobsSlice'
+import { setJobsData, setLoading, setError, setCompanyFilter, clearFilters } from '../store/slices/jobsSlice'
 import { jobsApi } from '../lib/api'
 import JobList from '../components/JobList'
 import SearchFilters from '../components/SearchFilters'
 import Pagination from '../components/Pagination'
 import { Card } from '../components/ui/card'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { Skeleton } from '../components/ui/skeleton'
 
 // Memoize SearchFilters to prevent unnecessary re-renders
@@ -18,7 +21,16 @@ const MemoizedSearchFilters = memo(SearchFilters)
 
 export default function HomePage() {
   const dispatch = useDispatch()
+  const searchParams = useSearchParams()
   const { jobs, filters, pagination, error } = useSelector((state: RootState) => state.jobs)
+
+  // Handle URL parameters on initial load
+  useEffect(() => {
+    const companyParam = searchParams.get('company')
+    if (companyParam && companyParam !== filters.company) {
+      dispatch(setCompanyFilter(companyParam))
+    }
+  }, [searchParams, dispatch, filters.company])
 
   // Debounce the search query to avoid too many API calls
   const [debouncedQuery] = useDebounce(filters.query, 500)
@@ -49,7 +61,7 @@ export default function HomePage() {
           total: searchResult.total,
           page: searchResult.page,
           per_page: searchResult.per_page,
-          pages: searchResult.pages,
+          pages: searchResult.pages || searchResult.total_pages,
         }
       }))
     }
@@ -114,11 +126,26 @@ export default function HomePage() {
         <div className="mb-6 content-transition">
           <h2 className="text-3xl font-semibold text-foreground mb-2 flex items-center gap-3">
             <span className="w-2 h-8 bg-gradient-to-b from-yellow-400 to-orange-400 rounded-full animate-pulse"></span>
-            Available Jobs 
+            {filters.company ? `Jobs at ${filters.company}` : 'Available Jobs'}
             <span className="bg-gradient-to-r from-yellow-400 to-orange-400 text-black px-3 py-1 rounded-full text-lg font-bold animate-glow content-transition">
               {pagination.total}
             </span>
           </h2>
+          {filters.company && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30 px-3 py-1">
+                Filtered by Company: {filters.company}
+              </Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => dispatch(clearFilters())}
+                className="text-xs text-muted-foreground hover:text-foreground border-muted-foreground/30 hover:border-foreground/50"
+              >
+                Show All Jobs
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="content-transition">

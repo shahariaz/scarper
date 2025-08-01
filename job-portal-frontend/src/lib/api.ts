@@ -23,6 +23,7 @@ export interface PaginatedResponse<T> {
   page: number
   per_page: number
   pages: number
+  total_pages?: number // For backward compatibility
 }
 
 export interface SearchFilters {

@@ -709,7 +709,150 @@ def create_app():
                 'success': False, 
                 'message': 'Internal server error'
             }), 500
-    
+
+    @app.route('/api/companies/public', methods=['GET'])
+    def get_public_companies():
+        """Get approved company profiles for public browsing with pagination"""
+        try:
+            # Get pagination parameters
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 12, type=int)
+            search = request.args.get('search', '', type=str)
+            industry = request.args.get('industry', '', type=str)
+            company_size = request.args.get('company_size', '', type=str)
+            location = request.args.get('location', '', type=str)
+            sort_by = request.args.get('sort_by', 'company_name', type=str)
+            sort_order = request.args.get('sort_order', 'asc', type=str)
+            
+            # Validate pagination parameters
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 12
+            
+            # Validate sort parameters
+            valid_sort_fields = ['company_name', 'industry', 'company_size', 'location', 'created_at']
+            if sort_by not in valid_sort_fields:
+                sort_by = 'company_name'
+            if sort_order not in ['asc', 'desc']:
+                sort_order = 'asc'
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Build WHERE clause for filters
+            where_conditions = ["u.user_type = 'company' AND u.is_active = 1 AND cp.is_approved = 1"]
+            params = []
+            
+            if search:
+                where_conditions.append("(cp.company_name LIKE ? OR cp.industry LIKE ? OR cp.location LIKE ? OR cp.company_description LIKE ?)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param, search_param])
+            
+            if industry:
+                where_conditions.append("cp.industry = ?")
+                params.append(industry)
+            
+            if company_size:
+                where_conditions.append("cp.company_size = ?")
+                params.append(company_size)
+            
+            if location:
+                where_conditions.append("cp.location = ?")
+                params.append(location)
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Get total count for pagination
+            count_query = f'''
+                SELECT COUNT(DISTINCT u.id)
+                FROM users u
+                JOIN company_profiles cp ON u.id = cp.user_id
+                LEFT JOIN job_postings jp ON u.id = jp.created_by_user_id AND jp.is_active = 1
+                WHERE {where_clause}
+            '''
+            cursor.execute(count_query, params)
+            total_companies = cursor.fetchone()[0]
+            
+            # Calculate pagination
+            total_pages = (total_companies + per_page - 1) // per_page
+            offset = (page - 1) * per_page
+            
+            # Get paginated companies with job counts
+            companies_query = f'''
+                SELECT 
+                    u.id,
+                    u.email,
+                    cp.company_name,
+                    cp.industry,
+                    cp.company_size,
+                    cp.location,
+                    cp.website,
+                    cp.company_description,
+                    cp.logo_url,
+                    cp.is_approved,
+                    cp.created_at,
+                    COUNT(jp.id) as job_count
+                FROM users u
+                JOIN company_profiles cp ON u.id = cp.user_id
+                LEFT JOIN job_postings jp ON u.id = jp.created_by_user_id AND jp.is_active = 1
+                WHERE {where_clause}
+                GROUP BY u.id
+                ORDER BY cp.{sort_by} {sort_order.upper()}
+                LIMIT ? OFFSET ?
+            '''
+            
+            cursor.execute(companies_query, params + [per_page, offset])
+            
+            companies = []
+            for row in cursor.fetchall():
+                companies.append({
+                    'id': row[0],
+                    'email': row[1],
+                    'company_name': row[2],
+                    'industry': row[3],
+                    'company_size': row[4],
+                    'location': row[5],
+                    'website': row[6],
+                    'bio': row[7],  # company_description
+                    'avatar_url': row[8],  # logo_url
+                    'is_approved': bool(row[9]),
+                    'created_at': row[10],
+                    'job_count': row[11],
+                    'rating': 4.0 + (hash(str(row[0])) % 10) / 10.0  # Mock rating for now
+                })
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'companies': companies,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total_companies,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting public companies: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error',
+                'companies': [],
+                'pagination': {
+                    'page': 1,
+                    'per_page': 12,
+                    'total': 0,
+                    'total_pages': 0,
+                    'has_next': False,
+                    'has_prev': False
+                }
+            }), 500
+
     @app.route('/api/jobs/categories', methods=['GET'])
     def get_job_categories():
         """Get job categories"""
@@ -1018,7 +1161,7 @@ def create_app():
                 'total': total,
                 'page': page,
                 'per_page': per_page,
-                'total_pages': (total + per_page - 1) // per_page
+                'pages': (total + per_page - 1) // per_page
             })
             
         except Exception as e:

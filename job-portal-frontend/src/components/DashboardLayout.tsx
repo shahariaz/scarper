@@ -154,6 +154,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       description: 'Back to job listings',
       public: true
     },
+
     {
       title: 'Dashboard',
       href: user?.user_type === 'company' ? '/company-dashboard' : '/dashboard',

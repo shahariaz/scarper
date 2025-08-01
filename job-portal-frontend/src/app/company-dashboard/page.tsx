@@ -382,19 +382,18 @@ export default function CompanyDashboard() {
                     Post New Job
                   </Button>
                   <Button 
+                    className="w-full justify-start bg-green-600 hover:bg-green-700 text-white" 
+                    onClick={() => window.location.href = '/profile'}
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Manage Company Profile
+                  </Button>
+                  <Button 
                     className="w-full justify-start" 
                     variant="outline"
                   >
                     <Users className="w-4 h-4 mr-2" />
                     View Applications
-                  </Button>
-                  <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
-                    onClick={() => window.location.href = '/profile'}
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Company Profile
                   </Button>
                   <Button 
                     className="w-full justify-start" 
@@ -407,7 +406,7 @@ export default function CompanyDashboard() {
               </Card>
             </div>
 
-            {/* Applications Status & Company Info */}
+            {/* Applications Status & Company Profile */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Applications by Status Pie Chart */}
               <Card className="bg-gray-800 border-gray-700">
@@ -443,10 +442,18 @@ export default function CompanyDashboard() {
                 </CardContent>
               </Card>
 
-              {/* Company Information */}
+              {/* Company Profile Management */}
               <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-white">Company Profile</CardTitle>
+                  <Button 
+                    size="sm" 
+                    className="bg-blue-600 hover:bg-blue-700"
+                    onClick={() => window.location.href = '/profile'}
+                  >
+                    <Settings className="w-4 h-4 mr-1" />
+                    Edit Profile
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-4">
@@ -482,6 +489,23 @@ export default function CompanyDashboard() {
                           Pending
                         </Badge>
                       )}
+                    </div>
+                    
+                    {/* Profile Completion Indicator */}
+                    <div className="pt-4 border-t border-gray-700">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-400 text-sm">Profile Completion</span>
+                        <span className="text-white text-sm font-medium">
+                          {Math.round(([user.company_name, user.industry, user.company_size, user.location, user.bio].filter(Boolean).length / 5) * 100)}%
+                        </span>
+                      </div>
+                      <Progress 
+                        value={([user.company_name, user.industry, user.company_size, user.location, user.bio].filter(Boolean).length / 5) * 100} 
+                        className="h-2" 
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Complete your profile to attract more candidates
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -617,8 +641,11 @@ export default function CompanyDashboard() {
                       <Progress value={60} className="h-2" />
                     </div>
                     <div className="pt-4 space-y-2">
-                      <Button className="w-full" variant="outline">
-                        <Settings className="w-4 h-4 mr-2" />
+                      <Button 
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={() => window.location.href = '/profile'}
+                      >
+                        <Building2 className="w-4 h-4 mr-2" />
                         Edit Company Profile
                       </Button>
                       <Button className="w-full" variant="outline">
