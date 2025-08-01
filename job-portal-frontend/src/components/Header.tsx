@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchUserProfile, logoutUser } from '../store/slices/authSlice'
 import { RootState, AppDispatch } from '../store/store'
+import { apiService } from '../services/api'
 import { Button } from './ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import {
@@ -38,12 +39,16 @@ export default function Header() {
   // Fetch user profile if we have tokens but no user data
   useEffect(() => {
     if (tokens.access_token && !user) {
+      // Sync token with apiService for dashboard compatibility
+      apiService.setToken(tokens.access_token)
       dispatch(fetchUserProfile())
     }
   }, [dispatch, tokens.access_token, user])
 
   const handleLogout = () => {
     dispatch(logoutUser())
+    // Clear apiService token for dashboard compatibility
+    apiService.clearAuth()
   }
 
   const getUserTypeIcon = (userType: string) => {
@@ -187,7 +192,7 @@ export default function Header() {
                       </DropdownMenuItem>
                       
                       {user.user_type === 'company' && (
-                        <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg mx-1 transition-all duration-200 cursor-pointer" onClick={() => router.push('/dashboard')}>
+                        <DropdownMenuItem className="text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg mx-1 transition-all duration-200 cursor-pointer" onClick={() => router.push('/company-dashboard')}>
                           <Building2 className="mr-3 h-4 w-4" />
                           <span className="font-medium">Company Dashboard</span>
                         </DropdownMenuItem>
@@ -303,7 +308,7 @@ export default function Header() {
                   </Link>
                   {user?.user_type === 'company' && (
                     <Link 
-                      href="/dashboard" 
+                      href="/company-dashboard" 
                       className="flex items-center px-4 py-3 text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 rounded-lg transition-all duration-200 font-medium"
                       onClick={() => setShowMobileMenu(false)}
                     >

@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { loginUser, registerUser, clearError } from '../store/slices/authSlice'
+import { loginUser, registerUser, clearError, fetchUserProfile } from '../store/slices/authSlice'
 import { RootState, AppDispatch } from '../store/store'
+import { apiService } from '../services/api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { CardDescription } from './ui/card'
@@ -58,6 +59,14 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
     }))
 
     if (loginUser.fulfilled.match(result)) {
+      // Sync token with apiService for dashboard compatibility
+      const token = result.payload?.tokens?.access_token
+      if (token) {
+        apiService.setToken(token)
+      }
+      
+      // Fetch user profile after successful login
+      await dispatch(fetchUserProfile())
       onClose()
     }
   }
@@ -86,6 +95,14 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
     }))
 
     if (registerUser.fulfilled.match(result)) {
+      // Sync token with apiService for dashboard compatibility
+      const token = result.payload?.tokens?.access_token
+      if (token) {
+        apiService.setToken(token)
+      }
+      
+      // Fetch user profile after successful registration
+      await dispatch(fetchUserProfile())
       onClose()
     }
   }

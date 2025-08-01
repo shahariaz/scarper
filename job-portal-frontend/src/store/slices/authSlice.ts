@@ -29,6 +29,16 @@ export interface User {
   current_position?: string
   expected_salary?: string
   available_for_work?: boolean
+  experience_years?: string
+  linkedin?: string
+  github?: string
+  portfolio?: string
+  twitter?: string
+  instagram?: string
+  facebook?: string
+  website_personal?: string
+  dribbble?: string
+  behance?: string
 }
 
 export interface AuthState {
@@ -40,7 +50,7 @@ export interface AuthState {
     access_token: string | null
     refresh_token: string | null
   }
-  settings: any | null
+  settings: Record<string, unknown> | null
 }
 
 const getInitialTokens = () => {
@@ -88,7 +98,12 @@ export const registerUser = createAsyncThunk(
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(userData),
+        body: JSON.stringify({
+          email: userData.email,
+          password: userData.password,
+          user_type: userData.user_type,
+          profile_data: userData.profile || {}
+        }),
       })
 
       const data = await response.json()
@@ -166,7 +181,7 @@ export const fetchUserProfile = createAsyncThunk(
         return rejectWithValue(data.message || 'Failed to fetch profile')
       }
 
-      return data.user
+      return data.profile
     } catch {
       return rejectWithValue('Network error occurred')
     }
@@ -235,8 +250,8 @@ export const updateUserProfile = createAsyncThunk(
         return rejectWithValue(data.message || 'Failed to update profile')
       }
 
-      return data.user
-    } catch (error) {
+      return data.profile
+    } catch {
       return rejectWithValue('Network error occurred')
     }
   }
@@ -270,7 +285,7 @@ export const changePassword = createAsyncThunk(
       }
 
       return data.message
-    } catch (error) {
+    } catch {
       return rejectWithValue('Network error occurred')
     }
   }
@@ -302,7 +317,7 @@ export const getUserSettings = createAsyncThunk(
       }
 
       return data.settings
-    } catch (error) {
+    } catch {
       return rejectWithValue('Network error occurred')
     }
   }
@@ -311,7 +326,7 @@ export const getUserSettings = createAsyncThunk(
 // Update user settings
 export const updateUserSettings = createAsyncThunk(
   'auth/updateSettings',
-  async (settingsData: any, { getState, rejectWithValue }) => {
+  async (settingsData: Record<string, unknown>, { getState, rejectWithValue }) => {
     try {
       const state = getState() as { auth: AuthState }
       const token = state.auth.tokens.access_token
@@ -336,7 +351,7 @@ export const updateUserSettings = createAsyncThunk(
       }
 
       return settingsData
-    } catch (error) {
+    } catch {
       return rejectWithValue('Network error occurred')
     }
   }
