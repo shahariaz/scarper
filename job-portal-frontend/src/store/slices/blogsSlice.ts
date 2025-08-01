@@ -268,6 +268,18 @@ const blogsSlice = createSlice({
       state.blogs = [];
       state.pagination = initialState.pagination;
     },
+    updateBlogLikes: (state, action: PayloadAction<{ blogId: number; likesCount: number }>) => {
+      // Update like count in the current blog
+      if (state.currentBlog && state.currentBlog.id === action.payload.blogId) {
+        state.currentBlog.likes_count = action.payload.likesCount;
+      }
+      
+      // Update like count in the blogs list
+      const blogIndex = state.blogs.findIndex(blog => blog.id === action.payload.blogId);
+      if (blogIndex !== -1) {
+        state.blogs[blogIndex].likes_count = action.payload.likesCount;
+      }
+    },
   },
   extraReducers: (builder) => {
     // Fetch blogs
@@ -365,5 +377,5 @@ const blogsSlice = createSlice({
   },
 });
 
-export const { setFilters, clearCurrentBlog, clearError, resetBlogs } = blogsSlice.actions;
+export const { setFilters, clearCurrentBlog, clearError, resetBlogs, updateBlogLikes } = blogsSlice.actions;
 export default blogsSlice.reducer;

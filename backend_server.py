@@ -3,6 +3,7 @@ Main API server for the job portal backend
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_socketio import SocketIO
 import jwt
 from functools import wraps
 from datetime import datetime, timedelta
@@ -18,6 +19,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scraper.models.auth_models import AuthService
 from scraper.models.job_models import JobService
 from scraper.models.blog_models import BlogService
+from scraper.models.social_models import SocialService
+from scraper.websocket_manager import init_websocket, get_websocket_manager
 from scraper.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -26,6 +29,7 @@ logger = setup_logger(__name__)
 auth_service = AuthService()
 job_service = JobService()
 blog_service = BlogService()
+social_service = SocialService()
 
 def create_app():
     """Create and configure the Flask application"""
@@ -34,6 +38,16 @@ def create_app():
     
     # Enable CORS for frontend
     CORS(app, origins=["http://localhost:3000", "http://localhost:5000"], supports_credentials=True)
+    
+    # Initialize SocketIO
+    socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000", "http://localhost:5000"])
+    
+    # Initialize WebSocket manager
+    websocket_manager = init_websocket(app, socketio)
+    
+    # Store socketio in app context for access in routes
+    app.socketio = socketio
+    app.websocket_manager = websocket_manager
     
     # JWT token verification decorator
     def token_required(f):
@@ -2712,6 +2726,474 @@ def create_app():
         }), 501
     
     # ============================================================================
+    # SOCIAL FEATURES API ENDPOINTS
+    # ============================================================================
+    
+    # --- FOLLOW/UNFOLLOW ENDPOINTS ---
+    
+    @app.route('/api/users/<int:user_id>/follow', methods=['POST'])
+    @token_required
+    def follow_user(user_id):
+        """Follow a user"""
+        try:
+            result = social_service.follow_user(request.current_user_id, user_id)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                status_code = 400 if 'already following' in result['message'].lower() or 'cannot follow' in result['message'].lower() else 404
+                return jsonify(result), status_code
+                
+        except Exception as e:
+            logger.error(f"Error following user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/users/<int:user_id>/unfollow', methods=['POST'])
+    @token_required
+    def unfollow_user(user_id):
+        """Unfollow a user"""
+        try:
+            result = social_service.unfollow_user(request.current_user_id, user_id)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error unfollowing user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/users/<int:user_id>/followers', methods=['GET'])
+    def get_user_followers(user_id):
+        """Get user's followers"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 20, type=int), 100)
+            
+            result = social_service.get_user_followers(user_id, page, per_page)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting followers for user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/users/<int:user_id>/following', methods=['GET'])
+    def get_user_following(user_id):
+        """Get users that a user is following"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 20, type=int), 100)
+            
+            result = social_service.get_user_following(user_id, page, per_page)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting following for user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/users/<int:user_id>/is-following', methods=['GET'])
+    @token_required
+    def check_is_following(user_id):
+        """Check if current user is following another user"""
+        try:
+            is_following = social_service.is_following(request.current_user_id, user_id)
+            return jsonify({
+                'success': True,
+                'is_following': is_following
+            })
+        except Exception as e:
+            logger.error(f"Error checking follow status: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # --- BLOG LIKES ENDPOINTS ---
+    
+    @app.route('/api/blogs/<int:blog_id>/like', methods=['POST'])
+    @token_required
+    def like_blog(blog_id):
+        """Like a blog post"""
+        try:
+            result = social_service.like_blog(blog_id, request.current_user_id)
+            
+            if result['success']:
+                # Send WebSocket notification for real-time updates
+                websocket_manager = get_websocket_manager()
+                if websocket_manager:
+                    websocket_manager.emit_blog_liked(
+                        blog_id, 
+                        request.current_user_id, 
+                        result.get('likes_count', 0)
+                    )
+                
+                return jsonify(result)
+            else:
+                status_code = 404 if 'not found' in result['message'].lower() else 400
+                return jsonify(result), status_code
+                
+        except Exception as e:
+            logger.error(f"Error liking blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/<int:blog_id>/unlike', methods=['POST'])
+    @token_required
+    def unlike_blog(blog_id):
+        """Unlike a blog post"""
+        try:
+            result = social_service.unlike_blog(blog_id, request.current_user_id)
+            
+            if result['success']:
+                # Send WebSocket notification for real-time updates
+                websocket_manager = get_websocket_manager()
+                if websocket_manager:
+                    websocket_manager.emit_blog_unliked(
+                        blog_id, 
+                        request.current_user_id, 
+                        result.get('likes_count', 0)
+                    )
+                
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error unliking blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/<int:blog_id>/is-liked', methods=['GET'])
+    @token_required
+    def check_blog_liked(blog_id):
+        """Check if current user has liked a blog"""
+        try:
+            is_liked = social_service.is_blog_liked(blog_id, request.current_user_id)
+            return jsonify({
+                'success': True,
+                'is_liked': is_liked
+            })
+        except Exception as e:
+            logger.error(f"Error checking blog like status: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # --- COMMENTS ENDPOINTS ---
+    
+    @app.route('/api/blogs/<int:blog_id>/comments', methods=['POST'])
+    @token_required
+    def add_blog_comment(blog_id):
+        """Add a comment to a blog post"""
+        try:
+            data = request.get_json()
+            
+            if not data or not data.get('content'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Comment content is required'
+                }), 400
+            
+            content = data.get('content', '').strip()
+            parent_id = data.get('parent_id')  # For replies
+            
+            result = social_service.add_comment(blog_id, request.current_user_id, content, parent_id)
+            
+            if result['success']:
+                # Send WebSocket notification for real-time updates
+                websocket_manager = get_websocket_manager()
+                if websocket_manager:
+                    if parent_id:
+                        # This is a reply
+                        websocket_manager.emit_comment_reply(
+                            blog_id, 
+                            parent_id,
+                            result.get('comment', {}),
+                            request.current_user_id
+                        )
+                    else:
+                        # This is a new comment
+                        websocket_manager.emit_comment_added(
+                            blog_id,
+                            result.get('comment', {}),
+                            request.current_user_id
+                        )
+                
+                return jsonify(result), 201
+            else:
+                status_code = 404 if 'not found' in result['message'].lower() else 400
+                return jsonify(result), status_code
+                
+        except Exception as e:
+            logger.error(f"Error adding comment to blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/<int:blog_id>/comments', methods=['GET'])
+    def get_blog_comments(blog_id):
+        """Get comments for a blog post"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 20, type=int), 100)
+            
+            result = social_service.get_blog_comments(blog_id, page, per_page)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting comments for blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/comments/<int:comment_id>/like', methods=['POST'])
+    @token_required
+    def like_comment(comment_id):
+        """Like a comment"""
+        try:
+            result = social_service.like_comment(comment_id, request.current_user_id)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                status_code = 404 if 'not found' in result['message'].lower() else 400
+                return jsonify(result), status_code
+                
+        except Exception as e:
+            logger.error(f"Error liking comment {comment_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/comments/<int:comment_id>/unlike', methods=['POST'])
+    @token_required
+    def unlike_comment(comment_id):
+        """Unlike a comment"""
+        try:
+            result = social_service.unlike_comment(comment_id, request.current_user_id)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error unliking comment {comment_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/comments/<int:comment_id>/is-liked', methods=['GET'])
+    @token_required
+    def check_comment_liked(comment_id):
+        """Check if current user has liked a comment"""
+        try:
+            is_liked = social_service.is_comment_liked(comment_id, request.current_user_id)
+            return jsonify({
+                'success': True,
+                'is_liked': is_liked
+            })
+        except Exception as e:
+            logger.error(f"Error checking comment like status: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # --- NOTIFICATIONS ENDPOINTS ---
+    
+    @app.route('/api/notifications', methods=['GET'])
+    @token_required
+    def get_notifications():
+        """Get user notifications"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 20, type=int), 100)
+            unread_only = request.args.get('unread_only', 'false').lower() == 'true'
+            
+            result = social_service.get_user_notifications(
+                request.current_user_id, page, per_page, unread_only
+            )
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting notifications: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+    @token_required
+    def mark_notification_read(notification_id):
+        """Mark a notification as read"""
+        try:
+            result = social_service.mark_notification_read(notification_id, request.current_user_id)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                status_code = 404 if 'not found' in result['message'].lower() else 400
+                return jsonify(result), status_code
+                
+        except Exception as e:
+            logger.error(f"Error marking notification {notification_id} as read: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/notifications/read-all', methods=['POST'])
+    @token_required
+    def mark_all_notifications_read():
+        """Mark all notifications as read"""
+        try:
+            result = social_service.mark_all_notifications_read(request.current_user_id)
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"Error marking all notifications as read: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/notifications/unread-count', methods=['GET'])
+    @token_required
+    def get_unread_notification_count():
+        """Get count of unread notifications"""
+        try:
+            count = social_service.get_unread_notification_count(request.current_user_id)
+            return jsonify({
+                'success': True,
+                'unread_count': count
+            })
+        except Exception as e:
+            logger.error(f"Error getting unread notification count: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # --- USER PROFILE ENDPOINTS ---
+
+    @app.route('/api/users/<int:user_id>/profile', methods=['GET'])
+    def get_user_public_profile(user_id):
+        """Get user's public profile with social stats"""
+        try:
+            # Get basic profile
+            profile = auth_service.get_user_profile(user_id)
+            if not profile:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            # Get social stats
+            social_stats = social_service.get_user_social_stats(user_id)
+            
+            # Remove sensitive info for public profile
+            public_profile = {
+                'id': profile['id'],
+                'email': profile['email'],
+                'user_type': profile['user_type'],
+                'first_name': profile.get('first_name', ''),
+                'last_name': profile.get('last_name', ''),
+                'avatar_url': profile.get('avatar_url', ''),
+                'bio': profile.get('bio', ''),
+                'created_at': profile['created_at'],
+                'social_stats': social_stats
+            }
+            
+            # Add company/jobseeker specific public info
+            if profile['user_type'] == 'company':
+                public_profile.update({
+                    'company_name': profile.get('company_name', ''),
+                    'industry': profile.get('industry', ''),
+                    'location': profile.get('location', ''),
+                    'website': profile.get('website', ''),
+                    'logo_url': profile.get('logo_url', ''),
+                    'is_approved': profile.get('is_approved', False)
+                })
+            elif profile['user_type'] == 'jobseeker':
+                public_profile.update({
+                    'experience_level': profile.get('experience_level', ''),
+                    'current_position': profile.get('current_position', ''),
+                    'location': profile.get('location', ''),
+                    'available_for_work': profile.get('available_for_work', True)
+                })
+            
+            return jsonify({
+                'success': True,
+                'profile': public_profile
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting user profile {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/users/<int:user_id>/activity-feed', methods=['GET'])
+    def get_user_activity_feed(user_id):
+        """Get user's activity feed (for followers)"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 20, type=int), 100)
+            
+            result = social_service.get_user_activity_feed(user_id, page, per_page)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting activity feed for user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    # ============================================================================
     # ERROR HANDLERS
     # ============================================================================
     
@@ -2737,7 +3219,7 @@ def create_app():
             'message': 'Internal server error'
         }), 500
     
-    return app
+    return app, socketio
 
 if __name__ == '__main__':
     # Initialize database tables
@@ -2745,16 +3227,17 @@ if __name__ == '__main__':
         auth_service.db.init_auth_tables()
         job_service.db.init_job_management_tables()
         blog_service.init_blog_tables()
+        social_service.init_social_tables()
         logger.info("Database tables initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
         sys.exit(1)
     
     # Create and run the app
-    app = create_app()
+    app, socketio = create_app()
     
     # Get port from environment or use default
     port = int(os.getenv('PORT', 5000))  # Changed from 5001 to 5000
     
-    logger.info(f"Starting Job Portal API server on port {port}")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    logger.info(f"Starting Job Portal API server with WebSocket support on port {port}")
+    socketio.run(app, debug=True, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
