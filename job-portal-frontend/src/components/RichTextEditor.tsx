@@ -6,6 +6,9 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { Link } from '@tiptap/extension-link';
+import { Image } from '@tiptap/extension-image';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { createLowlight } from 'lowlight';
 import { 
   Bold, 
   Italic, 
@@ -22,10 +25,16 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Code,
+  ImageIcon,
+  Upload
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { useCallback } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
+
+// Create lowlight instance
+const lowlight = createLowlight();
 
 interface RichTextEditorProps {
   content?: string;
@@ -33,6 +42,7 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  onImageUpload?: (file: File) => Promise<string>; // Returns image URL after upload
 }
 
 export default function RichTextEditor({
@@ -41,7 +51,16 @@ export default function RichTextEditor({
   placeholder = 'Start writing...',
   className = '',
   disabled = false,
+  onImageUpload,
 }: RichTextEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Handle client-side mounting
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -53,7 +72,18 @@ export default function RichTextEditor({
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
-          class: 'text-blue-600 underline hover:text-blue-800',
+          class: 'text-blue-400 underline hover:text-blue-300',
+        },
+      }),
+      Image.configure({
+        HTMLAttributes: {
+          class: 'max-w-full h-auto rounded-lg',
+        },
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+        HTMLAttributes: {
+          class: 'bg-slate-700 text-green-300 p-4 rounded-lg border border-slate-600',
         },
       }),
     ],
@@ -63,7 +93,7 @@ export default function RichTextEditor({
       onChange?.(html);
     },
     editable: !disabled,
-    immediatelyRender: false, // Fix SSR hydration mismatch
+    immediatelyRender: false, // Prevent SSR hydration mismatch
   });
 
   const setLink = useCallback(() => {
@@ -87,8 +117,88 @@ export default function RichTextEditor({
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   }, [editor]);
 
-  if (!editor) {
-    return null;
+  const handleImageUpload = useCallback(async () => {
+    if (!editor || !onImageUpload) return;
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          console.log('Starting image upload in editor:', file.name);
+          
+          // Insert loading placeholder at cursor position
+          const loadingId = `loading-${Date.now()}`;
+          editor.chain().focus().insertContent(
+            `<span id="${loadingId}" style="color: #60a5fa; background: #1e293b; padding: 4px 8px; border-radius: 4px;">📤 Uploading ${file.name}...</span>`
+          ).run();
+          
+          const imageUrl = await onImageUpload(file);
+          console.log('Image upload successful, URL:', imageUrl);
+          
+          // Use TipTap's proper image insertion method
+          // First remove the loading placeholder
+          const currentContent = editor.getHTML();
+          const updatedContent = currentContent.replace(
+            `<span id="${loadingId}" style="color: #60a5fa; background: #1e293b; padding: 4px 8px; border-radius: 4px;">📤 Uploading ${file.name}...</span>`,
+            ``
+          );
+          editor.commands.setContent(updatedContent);
+          
+          // Then insert the image at cursor position
+          editor.chain().focus().setImage({ 
+            src: imageUrl, 
+            alt: file.name
+          }).run();
+          
+          console.log('Image inserted into editor successfully');
+          
+        } catch (error) {
+          console.error('Image upload failed in editor:', error);
+          
+          // Replace loading with error message
+          const currentContent = editor.getHTML();
+          const updatedContent = currentContent.replace(
+            new RegExp(`<span id="loading-\\d+" style="color: #60a5fa; background: #1e293b; padding: 4px 8px; border-radius: 4px;">📤 Uploading ${file.name}...</span>`, 'g'),
+            '<span style="color: #ef4444; background: #1e293b; padding: 4px 8px; border-radius: 4px;">❌ Image upload failed</span>'
+          );
+          editor.commands.setContent(updatedContent);
+        }
+      }
+    };
+    input.click();
+  }, [editor, onImageUpload]);
+
+  const insertImageUrl = useCallback(() => {
+    if (!editor) return;
+
+    const url = window.prompt('Image URL');
+    if (url) {
+      editor.chain().focus().setImage({ src: url }).run();
+    }
+  }, [editor]);
+
+  // Don't render until mounted on client
+  if (!isMounted || !editor) {
+    return (
+      <div className={`border border-slate-600 rounded-lg overflow-hidden bg-slate-900 shadow-lg ${className}`}>
+        <div className="border-b border-slate-600 bg-gradient-to-r from-slate-800 to-slate-700 p-3">
+          <div className="animate-pulse flex space-x-2">
+            <div className="h-8 w-8 bg-slate-600 rounded"></div>
+            <div className="h-8 w-8 bg-slate-600 rounded"></div>
+            <div className="h-8 w-8 bg-slate-600 rounded"></div>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="animate-pulse">
+            <div className="h-4 bg-slate-700 rounded w-3/4 mb-2"></div>
+            <div className="h-4 bg-slate-700 rounded w-1/2"></div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -300,6 +410,56 @@ export default function RichTextEditor({
             title="Align Right"
           >
             <AlignRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <Separator orientation="vertical" className="h-6 mx-1 bg-slate-500" />
+
+        {/* Code Block */}
+        <Button
+          type="button"
+          variant={editor.isActive('codeBlock') ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+          disabled={disabled}
+          className={`h-8 w-8 p-0 mr-2 ${
+            editor.isActive('codeBlock') 
+              ? 'bg-green-600 text-white hover:bg-green-700' 
+              : 'text-gray-300 hover:text-white hover:bg-slate-600'
+          }`}
+          title="Code Block"
+        >
+          <Code className="h-4 w-4" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-6 mx-1 bg-slate-500" />
+
+        {/* Images */}
+        <div className="flex items-center gap-1 mr-2">
+          {onImageUpload && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleImageUpload}
+              disabled={disabled}
+              className="h-8 w-8 p-0 text-gray-300 hover:text-white hover:bg-slate-600"
+              title="Upload Image"
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
+          )}
+          
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={insertImageUrl}
+            disabled={disabled}
+            className="h-8 w-8 p-0 text-gray-300 hover:text-white hover:bg-slate-600"
+            title="Insert Image URL"
+          >
+            <ImageIcon className="h-4 w-4" />
           </Button>
         </div>
 

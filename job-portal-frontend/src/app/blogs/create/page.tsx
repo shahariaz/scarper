@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRouter, useParams } from 'next/navigation';
 import Image from 'next/image';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
 import { RootState, AppDispatch } from '@/store/store';
 import { createBlog, updateBlog, fetchBlogById, clearCurrentBlog } from '@/store/slices/blogsSlice';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,10 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import RichTextEditor from '@/components/RichTextEditor';
+import CloudinarySetup from '@/components/CloudinarySetup';
+import CloudinaryDebug from '@/components/CloudinaryDebug';
+
+// Remove dynamic import for now - using regular import with hydration handling instead
 import { 
   ArrowLeft, 
   Save, 
@@ -28,7 +33,8 @@ import {
   Clock,
   Sparkles,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Upload
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -47,6 +53,10 @@ export default function BlogEditorPage() {
   const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
   const params = useParams();
+  
+  // Add hydration state to prevent SSR mismatch
+  const [isHydrated, setIsHydrated] = useState(false);
+  
   const { currentBlog, loading, error } = useSelector((state: RootState) => state.blogs);
   const { isAuthenticated } = useSelector((state: RootState) => state.auth);
   
@@ -69,6 +79,11 @@ export default function BlogEditorPage() {
   const [saving, setSaving] = useState(false);
   const [wordCount, setWordCount] = useState(0);
   const [readingTime, setReadingTime] = useState(0);
+
+  // Handle hydration to prevent SSR mismatch
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Calculate word count and reading time
   useEffect(() => {
@@ -148,6 +163,17 @@ export default function BlogEditorPage() {
     }
   };
 
+  const handleImageUpload = async (file: File): Promise<string> => {
+    try {
+      const imageUrl = await uploadImageToCloudinary(file);
+      return imageUrl;
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      toast.error('Image upload failed. Please try again.');
+      throw error;
+    }
+  };
+
   const handleSave = async (publish: boolean = false) => {
     if (!formData.title.trim() || !formData.content.trim()) {
       toast.error('Title and content are required');
@@ -187,6 +213,20 @@ export default function BlogEditorPage() {
       window.open(`/blogs/${currentBlog.slug}`, '_blank');
     }
   };
+
+  // Show loading until hydrated to prevent SSR mismatch
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 flex items-center justify-center">
+        <Card className="w-full max-w-md bg-slate-800 border-slate-700">
+          <CardContent className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading editor...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -366,6 +406,7 @@ export default function BlogEditorPage() {
                   onChange={(content) => handleInputChange('content', content)}
                   placeholder="Start writing your amazing blog post..."
                   className="min-h-[500px] border-0 rounded-none"
+                  onImageUpload={handleImageUpload}
                 />
               </CardContent>
             </Card>
@@ -420,13 +461,72 @@ export default function BlogEditorPage() {
                   <CardTitle className="text-lg text-white">Featured Image</CardTitle>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Input
-                  placeholder="https://example.com/image.jpg"
-                  value={formData.featured_image}
-                  onChange={(e) => handleInputChange('featured_image', e.target.value)}
-                  className="border-slate-600 bg-slate-700 text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500"
-                />
+              <CardContent className="space-y-4">
+                {/* URL Input */}
+                <div>
+                  <Label className="text-sm text-gray-300 mb-2 block">Image URL</Label>
+                  <Input
+                    placeholder="https://example.com/image.jpg"
+                    value={formData.featured_image}
+                    onChange={(e) => handleInputChange('featured_image', e.target.value)}
+                    className="border-slate-600 bg-slate-700 text-white placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* OR Divider */}
+                <div className="flex items-center space-x-3">
+                  <div className="flex-1 h-px bg-slate-600"></div>
+                  <span className="text-sm text-gray-400">OR</span>
+                  <div className="flex-1 h-px bg-slate-600"></div>
+                </div>
+
+                {/* File Upload */}
+                <div>
+                  <Label className="text-sm text-gray-300 mb-2 block">Upload from Device</Label>
+                  <div className="flex space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = async (e) => {
+                          const file = (e.target as HTMLInputElement).files?.[0];
+                          if (file) {
+                            try {
+                              toast.loading('Uploading cover image...', { id: 'cover-upload' });
+                              const imageUrl = await handleImageUpload(file);
+                              handleInputChange('featured_image', imageUrl);
+                              toast.success('Cover image uploaded successfully!', { id: 'cover-upload' });
+                            } catch (error) {
+                              console.error('Cover image upload failed:', error);
+                              toast.error('Failed to upload cover image', { id: 'cover-upload' });
+                            }
+                          }
+                        };
+                        input.click();
+                      }}
+                      className="flex-1 border-slate-600 text-gray-300 hover:text-white hover:bg-slate-700"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Choose Image
+                    </Button>
+                    {formData.featured_image && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleInputChange('featured_image', '')}
+                        className="px-3 border-slate-600 text-red-400 hover:text-red-300 hover:bg-slate-700"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Image Preview */}
                 {formData.featured_image && (
                   <div className="relative">
                     <Image
@@ -439,10 +539,22 @@ export default function BlogEditorPage() {
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
                     />
+                    <div className="absolute top-2 right-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleInputChange('featured_image', '')}
+                        className="h-8 w-8 p-0 bg-red-600 hover:bg-red-700 border-red-600 text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
+                
                 <p className="text-sm text-gray-400">
-                  Add an engaging cover image for your blog post
+                  Add an engaging cover image for your blog post. You can either paste a URL or upload from your device.
                 </p>
               </CardContent>
             </Card>
@@ -557,6 +669,12 @@ export default function BlogEditorPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Cloudinary Setup */}
+            <CloudinarySetup />
+
+            {/* Debug Component */}
+            <CloudinaryDebug />
           </div>
         </div>
       </div>
