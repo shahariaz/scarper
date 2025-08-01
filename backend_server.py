@@ -3,6 +3,7 @@ Main API server for the job portal backend
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import jwt
 from functools import wraps
 from datetime import datetime, timedelta
@@ -32,6 +33,9 @@ def create_app():
     
     # Enable CORS for frontend
     CORS(app, origins=["http://localhost:3000", "http://localhost:5000"], supports_credentials=True)
+    
+    # Initialize SocketIO for real-time updates
+    socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000", "http://localhost:5000"])
     
     # JWT token verification decorator
     def token_required(f):
@@ -2154,6 +2158,1251 @@ def create_app():
             return jsonify(['Entry Level', 'Mid Level', 'Senior Level', 'Executive']), 500
 
     # ============================================================================
+    # BLOG MANAGEMENT ENDPOINTS
+    # ============================================================================
+    
+    @app.route('/api/blogs', methods=['GET'])
+    def get_blogs():
+        """Get all blog posts with pagination"""
+        try:
+            # Get pagination parameters
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 10)), 100)
+            search = request.args.get('search', '')
+            author_id = request.args.get('author_id')
+            tag = request.args.get('tag')
+            status = request.args.get('status', 'published')
+            
+            offset = (page - 1) * per_page
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Build WHERE clause
+            where_conditions = []
+            params = []
+            
+            # Only show published blogs to non-authors
+            if status == 'published':
+                where_conditions.append("b.is_published = 1")
+            elif status == 'draft':
+                # Only show drafts to authenticated users viewing their own posts
+                where_conditions.append("b.is_published = 0")
+                if 'Authorization' in request.headers:
+                    try:
+                        auth_header = request.headers['Authorization']
+                        token = auth_header.split(" ")[1]
+                        payload = auth_service.verify_token(token)
+                        if payload:
+                            where_conditions.append("b.author_id = ?")
+                            params.append(payload['user_id'])
+                        else:
+                            # Unauthorized users can't see drafts
+                            return jsonify({'success': True, 'blogs': [], 'pagination': {
+                                'page': page, 'per_page': per_page, 'total': 0, 'total_pages': 0,
+                                'has_next': False, 'has_prev': False
+                            }})
+                    except:
+                        return jsonify({'success': True, 'blogs': [], 'pagination': {
+                            'page': page, 'per_page': per_page, 'total': 0, 'total_pages': 0,
+                            'has_next': False, 'has_prev': False
+                        }})
+            
+            if search:
+                where_conditions.append("(b.title LIKE ? OR b.content LIKE ? OR b.excerpt LIKE ?)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param])
+            
+            if author_id:
+                where_conditions.append("b.author_id = ?")
+                params.append(author_id)
+            
+            if tag:
+                where_conditions.append("b.tags LIKE ?")
+                params.append(f"%{tag}%")
+            
+            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+            
+            # Get total count
+            count_query = f"""
+                SELECT COUNT(*) FROM blogs b
+                JOIN users u ON b.author_id = u.id
+                WHERE {where_clause}
+            """
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()[0]
+            
+            # Get blogs with author info and like counts
+            blogs_query = f"""
+                SELECT 
+                    b.id, b.title, b.content, b.slug, b.excerpt, b.featured_image,
+                    b.tags, b.views_count, b.is_published, b.created_at, b.updated_at,
+                    u.email as author_email,
+                    COALESCE(up.first_name, '') as author_first_name,
+                    COALESCE(up.last_name, '') as author_last_name,
+                    COALESCE(up.avatar_url, '') as author_avatar,
+                    (SELECT COUNT(*) FROM blog_likes bl WHERE bl.blog_id = b.id) as like_count,
+                    (SELECT COUNT(*) FROM blog_comments bc WHERE bc.blog_id = b.id) as comment_count
+                FROM blogs b
+                JOIN users u ON b.author_id = u.id
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE {where_clause}
+                ORDER BY b.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+            
+            cursor.execute(blogs_query, params + [per_page, offset])
+            
+            blogs = []
+            for row in cursor.fetchall():
+                blog = {
+                    'id': row[0],
+                    'title': row[1],
+                    'content': row[2],
+                    'slug': row[3],
+                    'excerpt': row[4],
+                    'featured_image': row[5],
+                    'tags': row[6].split(',') if row[6] else [],
+                    'view_count': row[7] or 0,
+                    'is_published': bool(row[8]),
+                    'created_at': row[9],
+                    'updated_at': row[10],
+                    'author': {
+                        'email': row[11],
+                        'first_name': row[12],
+                        'last_name': row[13],
+                        'avatar_url': row[14]
+                    },
+                    'like_count': row[15],
+                    'comment_count': row[16]
+                }
+                blogs.append(blog)
+            
+            total_pages = (total + per_page - 1) // per_page
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'blogs': blogs,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting blogs: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/blogs', methods=['POST'])
+    @token_required
+    def create_blog():
+        """Create a new blog post"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            # Validate required fields
+            required_fields = ['title', 'content']
+            for field in required_fields:
+                if field not in data or not data[field].strip():
+                    return jsonify({
+                        'success': False,
+                        'message': f'Missing required field: {field}'
+                    }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Generate slug from title
+            import re
+            slug = re.sub(r'[^a-zA-Z0-9\s-]', '', data['title'].lower())
+            slug = re.sub(r'\s+', '-', slug.strip())
+            
+            # Ensure slug is unique
+            base_slug = slug
+            counter = 1
+            while True:
+                cursor.execute("SELECT id FROM blogs WHERE slug = ?", (slug,))
+                if not cursor.fetchone():
+                    break
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            # Insert blog
+            cursor.execute("""
+                INSERT INTO blogs (
+                    title, content, author_id, slug, excerpt, featured_image,
+                    tags, is_published, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data['title'],
+                data['content'],
+                request.current_user_id,
+                slug,
+                data.get('excerpt', ''),
+                data.get('featured_image', ''),
+                ','.join(data.get('tags', [])),
+                data.get('is_published', True),
+                datetime.utcnow().isoformat(),
+                datetime.utcnow().isoformat()
+            ))
+            
+            blog_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Blog created successfully',
+                'blog': {
+                    'id': blog_id,
+                    'slug': slug
+                }
+            }), 201
+            
+        except Exception as e:
+            logger.error(f"Error creating blog: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/blogs/<int:blog_id>', methods=['GET'])
+    def get_blog(blog_id):
+        """Get a single blog post"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user is authenticated for like status
+            user_id = None
+            if 'Authorization' in request.headers:
+                try:
+                    auth_header = request.headers['Authorization']
+                    token = auth_header.split(" ")[1]
+                    payload = auth_service.verify_token(token)
+                    if payload:
+                        user_id = payload['user_id']
+                except:
+                    pass
+            
+            # Get blog with author info
+            cursor.execute("""
+                SELECT 
+                    b.id, b.title, b.content, b.slug, b.excerpt, b.featured_image,
+                    b.tags, b.views_count, b.is_published, b.created_at, b.updated_at,
+                    b.author_id,
+                    u.email as author_email,
+                    COALESCE(up.first_name, '') as author_first_name,
+                    COALESCE(up.last_name, '') as author_last_name,
+                    COALESCE(up.avatar_url, '') as author_avatar
+                FROM blogs b
+                JOIN users u ON b.author_id = u.id
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE b.id = ?
+            """, (blog_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            # Check if blog is published or user is the author
+            if not row[8] and (not user_id or user_id != row[11]):  # not published and not author
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            # Increment view count
+            cursor.execute("UPDATE blogs SET views_count = COALESCE(views_count, 0) + 1 WHERE id = ?", (blog_id,))
+            
+            # Get like count and user's like status
+            cursor.execute("SELECT COUNT(*) FROM blog_likes WHERE blog_id = ?", (blog_id,))
+            like_count = cursor.fetchone()[0]
+            
+            user_liked = False
+            if user_id:
+                cursor.execute("SELECT id FROM blog_likes WHERE blog_id = ? AND user_id = ?", (blog_id, user_id))
+                user_liked = cursor.fetchone() is not None
+            
+            # Get comment count
+            cursor.execute("SELECT COUNT(*) FROM blog_comments WHERE blog_id = ?", (blog_id,))
+            comment_count = cursor.fetchone()[0]
+            
+            conn.commit()
+            conn.close()
+            
+            blog = {
+                'id': row[0],
+                'title': row[1],
+                'content': row[2],
+                'slug': row[3],
+                'excerpt': row[4],
+                'featured_image': row[5],
+                'tags': row[6].split(',') if row[6] else [],
+                'view_count': (row[7] or 0) + 1,  # Return incremented view count
+                'is_published': bool(row[8]),
+                'created_at': row[9],
+                'updated_at': row[10],
+                'author': {
+                    'id': row[11],
+                    'email': row[12],
+                    'first_name': row[13],
+                    'last_name': row[14],
+                    'avatar_url': row[15]
+                },
+                'like_count': like_count,
+                'comment_count': comment_count,
+                'user_liked': user_liked
+            }
+            
+            return jsonify({
+                'success': True,
+                'blog': blog
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/blogs/<int:blog_id>', methods=['PUT'])
+    @token_required
+    def update_blog(blog_id):
+        """Update a blog post"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if blog exists and user owns it
+            cursor.execute("SELECT author_id FROM blogs WHERE id = ?", (blog_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            if row[0] != request.current_user_id:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Access denied'
+                }), 403
+            
+            # Build update query
+            update_fields = []
+            params = []
+            
+            updateable_fields = ['title', 'content', 'excerpt', 'featured_image', 'is_published']
+            for field in updateable_fields:
+                if field in data:
+                    update_fields.append(f"{field} = ?")
+                    params.append(data[field])
+            
+            if 'tags' in data:
+                update_fields.append("tags = ?")
+                params.append(','.join(data['tags']) if isinstance(data['tags'], list) else data['tags'])
+            
+            if update_fields:
+                update_fields.append("updated_at = ?")
+                params.append(datetime.utcnow().isoformat())
+                params.append(blog_id)
+                
+                cursor.execute(f"UPDATE blogs SET {', '.join(update_fields)} WHERE id = ?", params)
+                conn.commit()
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Blog updated successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error updating blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/blogs/<int:blog_id>', methods=['DELETE'])
+    @token_required
+    def delete_blog(blog_id):
+        """Delete a blog post"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if blog exists and user owns it
+            cursor.execute("SELECT author_id FROM blogs WHERE id = ?", (blog_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            if row[0] != request.current_user_id:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Access denied'
+                }), 403
+            
+            # Delete blog and related data (foreign keys should handle cascades)
+            cursor.execute("DELETE FROM blogs WHERE id = ?", (blog_id,))
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Blog deleted successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error deleting blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # ============================================================================
+    # SOCIAL INTERACTION ENDPOINTS
+    # ============================================================================
+    
+    @app.route('/api/blogs/<int:blog_id>/like', methods=['POST'])
+    @token_required
+    def like_blog(blog_id):
+        """Like a blog post"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if blog exists
+            cursor.execute("SELECT id, author_id FROM blogs WHERE id = ?", (blog_id,))
+            blog = cursor.fetchone()
+            if not blog:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            # Check if already liked
+            cursor.execute("SELECT id FROM blog_likes WHERE blog_id = ? AND user_id = ?", (blog_id, request.current_user_id))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog already liked'
+                }), 400
+            
+            # Add like
+            cursor.execute("INSERT INTO blog_likes (blog_id, user_id) VALUES (?, ?)", (blog_id, request.current_user_id))
+            
+            # Create notification if not liking own blog
+            if blog[1] != request.current_user_id:
+                cursor.execute("""
+                    INSERT INTO notifications (user_id, from_user_id, type, title, message, target_type, target_id)
+                    VALUES (?, ?, 'like', 'New Blog Like', 'Someone liked your blog post', 'blog', ?)
+                """, (blog[1], request.current_user_id, blog_id))
+            
+            # Add to activity feed
+            cursor.execute("""
+                INSERT INTO user_activities (user_id, activity_type, target_type, target_id)
+                VALUES (?, 'blog_like', 'blog', ?)
+            """, (request.current_user_id, blog_id))
+            
+            conn.commit()
+            
+            # Get updated like count
+            cursor.execute("SELECT COUNT(*) FROM blog_likes WHERE blog_id = ?", (blog_id,))
+            like_count = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            # Emit real-time update
+            socketio.emit('blog_liked', {
+                'blog_id': blog_id,
+                'like_count': like_count,
+                'user_id': request.current_user_id
+            }, room=f"blog_{blog_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Blog liked successfully',
+                'like_count': like_count
+            })
+            
+        except Exception as e:
+            logger.error(f"Error liking blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/blogs/<int:blog_id>/unlike', methods=['POST'])
+    @token_required
+    def unlike_blog(blog_id):
+        """Unlike a blog post"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if blog exists
+            cursor.execute("SELECT id FROM blogs WHERE id = ?", (blog_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            # Check if liked
+            cursor.execute("SELECT id FROM blog_likes WHERE blog_id = ? AND user_id = ?", (blog_id, request.current_user_id))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not liked'
+                }), 400
+            
+            # Remove like
+            cursor.execute("DELETE FROM blog_likes WHERE blog_id = ? AND user_id = ?", (blog_id, request.current_user_id))
+            conn.commit()
+            
+            # Get updated like count
+            cursor.execute("SELECT COUNT(*) FROM blog_likes WHERE blog_id = ?", (blog_id,))
+            like_count = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            # Emit real-time update
+            socketio.emit('blog_unliked', {
+                'blog_id': blog_id,
+                'like_count': like_count,
+                'user_id': request.current_user_id
+            }, room=f"blog_{blog_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Blog unliked successfully',
+                'like_count': like_count
+            })
+            
+        except Exception as e:
+            logger.error(f"Error unliking blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/users/<int:user_id>/follow', methods=['POST'])
+    @token_required
+    def follow_user(user_id):
+        """Follow a user"""
+        try:
+            if user_id == request.current_user_id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot follow yourself'
+                }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            # Check if already following
+            cursor.execute("SELECT id FROM user_follows WHERE follower_id = ? AND following_id = ?", (request.current_user_id, user_id))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Already following this user'
+                }), 400
+            
+            # Add follow
+            cursor.execute("INSERT INTO user_follows (follower_id, following_id) VALUES (?, ?)", (request.current_user_id, user_id))
+            
+            # Create notification
+            cursor.execute("""
+                INSERT INTO notifications (user_id, from_user_id, type, title, message, target_type, target_id)
+                VALUES (?, ?, 'follow', 'New Follower', 'Someone started following you', 'user', ?)
+            """, (user_id, request.current_user_id, request.current_user_id))
+            
+            # Add to activity feed
+            cursor.execute("""
+                INSERT INTO user_activities (user_id, activity_type, target_type, target_id)
+                VALUES (?, 'follow', 'user', ?)
+            """, (request.current_user_id, user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            # Emit real-time update to the followed user
+            socketio.emit('new_follower', {
+                'follower_id': request.current_user_id,
+                'message': 'You have a new follower!'
+            }, room=f"user_{user_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'User followed successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error following user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/users/<int:user_id>/unfollow', methods=['POST'])
+    @token_required
+    def unfollow_user(user_id):
+        """Unfollow a user"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if following
+            cursor.execute("SELECT id FROM user_follows WHERE follower_id = ? AND following_id = ?", (request.current_user_id, user_id))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Not following this user'
+                }), 400
+            
+            # Remove follow
+            cursor.execute("DELETE FROM user_follows WHERE follower_id = ? AND following_id = ?", (request.current_user_id, user_id))
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User unfollowed successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error unfollowing user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/users/search', methods=['GET'])
+    def search_users():
+        """Search for users"""
+        try:
+            search_query = request.args.get('q', '').strip()
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 10)), 100)
+            
+            if not search_query:
+                return jsonify({
+                    'success': True,
+                    'users': [],
+                    'pagination': {
+                        'page': page,
+                        'per_page': per_page,
+                        'total': 0,
+                        'total_pages': 0,
+                        'has_next': False,
+                        'has_prev': False
+                    }
+                })
+            
+            offset = (page - 1) * per_page
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Search users by email, first name, last name
+            search_param = f"%{search_query}%"
+            
+            # Get total count
+            cursor.execute("""
+                SELECT COUNT(DISTINCT u.id)
+                FROM users u
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE u.is_active = 1 AND (
+                    u.email LIKE ? OR 
+                    up.first_name LIKE ? OR 
+                    up.last_name LIKE ?
+                )
+            """, (search_param, search_param, search_param))
+            
+            total = cursor.fetchone()[0]
+            
+            # Get users
+            cursor.execute("""
+                SELECT DISTINCT
+                    u.id, u.email, u.user_type, u.created_at,
+                    COALESCE(up.first_name, '') as first_name,
+                    COALESCE(up.last_name, '') as last_name,
+                    COALESCE(up.avatar_url, '') as avatar_url,
+                    COALESCE(up.bio, '') as bio,
+                    (SELECT COUNT(*) FROM user_follows uf WHERE uf.following_id = u.id) as follower_count,
+                    (SELECT COUNT(*) FROM user_follows uf WHERE uf.follower_id = u.id) as following_count
+                FROM users u
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE u.is_active = 1 AND (
+                    u.email LIKE ? OR 
+                    up.first_name LIKE ? OR 
+                    up.last_name LIKE ?
+                )
+                ORDER BY u.created_at DESC
+                LIMIT ? OFFSET ?
+            """, (search_param, search_param, search_param, per_page, offset))
+            
+            users = []
+            for row in cursor.fetchall():
+                user = {
+                    'id': row[0],
+                    'email': row[1],
+                    'user_type': row[2],
+                    'created_at': row[3],
+                    'first_name': row[4],
+                    'last_name': row[5],
+                    'avatar_url': row[6],
+                    'bio': row[7],
+                    'follower_count': row[8],
+                    'following_count': row[9]
+                }
+                users.append(user)
+            
+            total_pages = (total + per_page - 1) // per_page
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'users': users,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error searching users: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # ============================================================================
+    # COMMENT MANAGEMENT ENDPOINTS  
+    # ============================================================================
+    
+    @app.route('/api/blogs/<int:blog_id>/comments', methods=['GET'])
+    def get_blog_comments(blog_id):
+        """Get comments for a blog post"""
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 20)), 100)
+            offset = (page - 1) * per_page
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if blog exists
+            cursor.execute("SELECT id FROM blogs WHERE id = ?", (blog_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            # Get total count
+            cursor.execute("SELECT COUNT(*) FROM blog_comments WHERE blog_id = ?", (blog_id,))
+            total = cursor.fetchone()[0]
+            
+            # Get comments with author info and like counts
+            cursor.execute("""
+                SELECT 
+                    bc.id, bc.content, bc.parent_id, bc.created_at, bc.updated_at,
+                    bc.user_id,
+                    u.email as author_email,
+                    COALESCE(up.first_name, '') as author_first_name,
+                    COALESCE(up.last_name, '') as author_last_name,
+                    COALESCE(up.avatar_url, '') as author_avatar,
+                    (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = bc.id) as like_count
+                FROM blog_comments bc
+                JOIN users u ON bc.user_id = u.id
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE bc.blog_id = ?
+                ORDER BY bc.created_at ASC
+                LIMIT ? OFFSET ?
+            """, (blog_id, per_page, offset))
+            
+            comments = []
+            for row in cursor.fetchall():
+                comment = {
+                    'id': row[0],
+                    'content': row[1],
+                    'parent_id': row[2],
+                    'created_at': row[3],
+                    'updated_at': row[4],
+                    'author': {
+                        'id': row[5],
+                        'email': row[6],
+                        'first_name': row[7],
+                        'last_name': row[8],
+                        'avatar_url': row[9]
+                    },
+                    'like_count': row[10]
+                }
+                comments.append(comment)
+            
+            total_pages = (total + per_page - 1) // per_page
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'comments': comments,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting blog comments: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/blogs/<int:blog_id>/comments', methods=['POST'])
+    @token_required
+    def create_blog_comment(blog_id):
+        """Add a comment to a blog post"""
+        try:
+            data = request.get_json()
+            
+            if not data or not data.get('content', '').strip():
+                return jsonify({
+                    'success': False,
+                    'message': 'Comment content is required'
+                }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if blog exists
+            cursor.execute("SELECT id, author_id FROM blogs WHERE id = ?", (blog_id,))
+            blog = cursor.fetchone()
+            if not blog:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+            
+            # Validate parent comment if provided
+            parent_id = data.get('parent_id')
+            if parent_id:
+                cursor.execute("SELECT id FROM blog_comments WHERE id = ? AND blog_id = ?", (parent_id, blog_id))
+                if not cursor.fetchone():
+                    conn.close()
+                    return jsonify({
+                        'success': False,
+                        'message': 'Parent comment not found'
+                    }), 400
+            
+            # Insert comment
+            cursor.execute("""
+                INSERT INTO blog_comments (blog_id, user_id, parent_id, content, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                blog_id,
+                request.current_user_id,
+                parent_id,
+                data['content'].strip(),
+                datetime.utcnow().isoformat(),
+                datetime.utcnow().isoformat()
+            ))
+            
+            comment_id = cursor.lastrowid
+            
+            # Create notification if not commenting on own blog
+            if blog[1] != request.current_user_id:
+                cursor.execute("""
+                    INSERT INTO notifications (user_id, from_user_id, type, title, message, target_type, target_id)
+                    VALUES (?, ?, 'comment', 'New Comment', 'Someone commented on your blog post', 'blog', ?)
+                """, (blog[1], request.current_user_id, blog_id))
+            
+            # Add to activity feed
+            cursor.execute("""
+                INSERT INTO user_activities (user_id, activity_type, target_type, target_id)
+                VALUES (?, 'comment', 'blog', ?)
+            """, (request.current_user_id, blog_id))
+            
+            conn.commit()
+            conn.close()
+            
+            # Emit real-time update
+            socketio.emit('new_comment', {
+                'blog_id': blog_id,
+                'comment_id': comment_id,
+                'user_id': request.current_user_id
+            }, room=f"blog_{blog_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Comment added successfully',
+                'comment': {
+                    'id': comment_id
+                }
+            }), 201
+            
+        except Exception as e:
+            logger.error(f"Error creating blog comment: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/comments/<int:comment_id>/like', methods=['POST'])
+    @token_required
+    def like_comment(comment_id):
+        """Like a comment"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if comment exists
+            cursor.execute("SELECT id, user_id FROM blog_comments WHERE id = ?", (comment_id,))
+            comment = cursor.fetchone()
+            if not comment:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Comment not found'
+                }), 404
+            
+            # Check if already liked
+            cursor.execute("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?", (comment_id, request.current_user_id))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Comment already liked'
+                }), 400
+            
+            # Add like
+            cursor.execute("INSERT INTO comment_likes (comment_id, user_id) VALUES (?, ?)", (comment_id, request.current_user_id))
+            
+            # Create notification if not liking own comment
+            if comment[1] != request.current_user_id:
+                cursor.execute("""
+                    INSERT INTO notifications (user_id, from_user_id, type, title, message, target_type, target_id)
+                    VALUES (?, ?, 'like', 'Comment Liked', 'Someone liked your comment', 'comment', ?)
+                """, (comment[1], request.current_user_id, comment_id))
+            
+            conn.commit()
+            
+            # Get updated like count
+            cursor.execute("SELECT COUNT(*) FROM comment_likes WHERE comment_id = ?", (comment_id,))
+            like_count = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            # Emit real-time update
+            socketio.emit('comment_liked', {
+                'comment_id': comment_id,
+                'like_count': like_count,
+                'user_id': request.current_user_id
+            })
+            
+            return jsonify({
+                'success': True,
+                'message': 'Comment liked successfully',
+                'like_count': like_count
+            })
+            
+        except Exception as e:
+            logger.error(f"Error liking comment {comment_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/comments/<int:comment_id>/unlike', methods=['POST'])
+    @token_required
+    def unlike_comment(comment_id):
+        """Unlike a comment"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if comment exists
+            cursor.execute("SELECT id FROM blog_comments WHERE id = ?", (comment_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Comment not found'
+                }), 404
+            
+            # Check if liked
+            cursor.execute("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?", (comment_id, request.current_user_id))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Comment not liked'
+                }), 400
+            
+            # Remove like
+            cursor.execute("DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?", (comment_id, request.current_user_id))
+            conn.commit()
+            
+            # Get updated like count
+            cursor.execute("SELECT COUNT(*) FROM comment_likes WHERE comment_id = ?", (comment_id,))
+            like_count = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            # Emit real-time update
+            socketio.emit('comment_unliked', {
+                'comment_id': comment_id,
+                'like_count': like_count,
+                'user_id': request.current_user_id
+            })
+            
+            return jsonify({
+                'success': True,
+                'message': 'Comment unliked successfully',
+                'like_count': like_count
+            })
+            
+        except Exception as e:
+            logger.error(f"Error unliking comment {comment_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # ============================================================================
+    # NOTIFICATION ENDPOINTS
+    # ============================================================================
+    
+    @app.route('/api/notifications', methods=['GET'])
+    @token_required
+    def get_notifications():
+        """Get user notifications"""
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 20)), 100)
+            unread_only = request.args.get('unread_only', 'false').lower() == 'true'
+            
+            offset = (page - 1) * per_page
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Build WHERE clause
+            where_conditions = ["n.user_id = ?"]
+            params = [request.current_user_id]
+            
+            if unread_only:
+                where_conditions.append("n.is_read = 0")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Get total count
+            cursor.execute(f"SELECT COUNT(*) FROM notifications n WHERE {where_clause}", params)
+            total = cursor.fetchone()[0]
+            
+            # Get notifications with sender info
+            cursor.execute(f"""
+                SELECT 
+                    n.id, n.type, n.title, n.message, n.target_type, n.target_id,
+                    n.is_read, n.created_at, n.from_user_id,
+                    COALESCE(u.email, '') as from_user_email,
+                    COALESCE(up.first_name, '') as from_user_first_name,
+                    COALESCE(up.last_name, '') as from_user_last_name,
+                    COALESCE(up.avatar_url, '') as from_user_avatar
+                FROM notifications n
+                LEFT JOIN users u ON n.from_user_id = u.id
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE {where_clause}
+                ORDER BY n.created_at DESC
+                LIMIT ? OFFSET ?
+            """, params + [per_page, offset])
+            
+            notifications = []
+            for row in cursor.fetchall():
+                notification = {
+                    'id': row[0],
+                    'type': row[1],
+                    'title': row[2],
+                    'message': row[3],
+                    'target_type': row[4],
+                    'target_id': row[5],
+                    'is_read': bool(row[6]),
+                    'created_at': row[7],
+                    'from_user': {
+                        'id': row[8],
+                        'email': row[9],
+                        'first_name': row[10],
+                        'last_name': row[11],
+                        'avatar_url': row[12]
+                    } if row[8] else None
+                }
+                notifications.append(notification)
+            
+            total_pages = (total + per_page - 1) // per_page
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'notifications': notifications,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting notifications: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+    
+    @app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+    @token_required
+    def mark_notification_read(notification_id):
+        """Mark notification as read"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if notification exists and belongs to user
+            cursor.execute("SELECT id FROM notifications WHERE id = ? AND user_id = ?", (notification_id, request.current_user_id))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'Notification not found'
+                }), 404
+            
+            # Mark as read
+            cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notification_id,))
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Notification marked as read'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error marking notification {notification_id} as read: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    # ============================================================================
+    # WEBSOCKET EVENT HANDLERS
+    # ============================================================================
+    
+    @socketio.on('connect')
+    def handle_connect():
+        """Handle client connection"""
+        print(f"Client connected: {request.sid}")
+        emit('connected', {'message': 'Successfully connected to the server'})
+    
+    @socketio.on('disconnect')
+    def handle_disconnect():
+        """Handle client disconnection"""
+        print(f"Client disconnected: {request.sid}")
+    
+    @socketio.on('join_blog')
+    def handle_join_blog(data):
+        """Join blog room for real-time updates"""
+        blog_id = data.get('blog_id')
+        if blog_id:
+            join_room(f"blog_{blog_id}")
+            emit('joined_blog', {'blog_id': blog_id})
+    
+    @socketio.on('leave_blog')
+    def handle_leave_blog(data):
+        """Leave blog room"""
+        blog_id = data.get('blog_id')
+        if blog_id:
+            leave_room(f"blog_{blog_id}")
+            emit('left_blog', {'blog_id': blog_id})
+    
+    @socketio.on('join_user')
+    def handle_join_user(data):
+        """Join user room for notifications"""
+        user_id = data.get('user_id')
+        if user_id:
+            join_room(f"user_{user_id}")
+            emit('joined_user', {'user_id': user_id})
+
+    # ============================================================================
     # HEALTH CHECK AND INFO ENDPOINTS
     # ============================================================================
     
@@ -2209,7 +3458,7 @@ def create_app():
             'message': 'Internal server error'
         }), 500
     
-    return app
+    return app, socketio
 
 if __name__ == '__main__':
     # Initialize database tables
@@ -2222,10 +3471,10 @@ if __name__ == '__main__':
         sys.exit(1)
     
     # Create and run the app
-    app = create_app()
+    app, socketio = create_app()
     
     # Get port from environment or use default
     port = int(os.getenv('PORT', 5000))  # Changed from 5001 to 5000
     
-    logger.info(f"Starting Job Portal API server on port {port}")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    logger.info(f"Starting Job Portal API server with WebSocket support on port {port}")
+    socketio.run(app, debug=True, host='0.0.0.0', port=port)
