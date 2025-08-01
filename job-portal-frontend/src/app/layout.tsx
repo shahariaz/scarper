@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
 import ConditionalHeader from "@/components/ConditionalHeader";
+import AccountStatusChecker from "@/components/AccountStatusChecker";
+import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,8 +22,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} antialiased min-h-screen bg-background`}>
         <Providers>
-          <ConditionalHeader />
-          {children}
+          <AccountStatusChecker>
+            <ConditionalHeader />
+            {children}
+            <Toaster position="top-right" />
+          </AccountStatusChecker>
         </Providers>
       </body>
     </html>

@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scraper.models.auth_models import AuthService
 from scraper.models.job_models import JobService
+from scraper.models.blog_models import BlogService
 from scraper.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -24,6 +25,7 @@ logger = setup_logger(__name__)
 # Initialize services
 auth_service = AuthService()
 job_service = JobService()
+blog_service = BlogService()
 
 def create_app():
     """Create and configure the Flask application"""
@@ -59,6 +61,54 @@ def create_app():
                 # Add user info to request context
                 request.current_user_id = payload['user_id']
                 request.current_user_type = payload['user_type']
+                
+                # Check if user is banned or suspended
+                conn = sqlite3.connect('jobs.db')
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT is_banned, is_suspended, suspended_until, banned_reason, suspended_reason 
+                    FROM users WHERE id = ?
+                ''', (request.current_user_id,))
+                user_status = cursor.fetchone()
+                conn.close()
+                
+                if user_status:
+                    is_banned, is_suspended, suspended_until, banned_reason, suspended_reason = user_status
+                    
+                    # Check if user is banned
+                    if is_banned:
+                        return jsonify({
+                            'success': False, 
+                            'message': 'Your account has been banned',
+                            'banned': True,
+                            'reason': banned_reason or 'No reason provided',
+                            'contact_email': 'support@jobportal.com'
+                        }), 403
+                    
+                    # Check if user is suspended
+                    if is_suspended and suspended_until:
+                        from datetime import datetime
+                        try:
+                            suspend_end = datetime.fromisoformat(suspended_until.replace('Z', '+00:00'))
+                            if datetime.now().replace(tzinfo=suspend_end.tzinfo) < suspend_end:
+                                days_remaining = (suspend_end - datetime.now().replace(tzinfo=suspend_end.tzinfo)).days + 1
+                                return jsonify({
+                                    'success': False,
+                                    'message': f'Your account is suspended for {days_remaining} more days',
+                                    'suspended': True,
+                                    'reason': suspended_reason or 'No reason provided',
+                                    'suspended_until': suspended_until,
+                                    'contact_email': 'support@jobportal.com'
+                                }), 403
+                        except (ValueError, TypeError):
+                            # If date parsing fails, assume suspension is permanent until manually lifted
+                            return jsonify({
+                                'success': False,
+                                'message': 'Your account is currently suspended',
+                                'suspended': True,
+                                'reason': suspended_reason or 'No reason provided',
+                                'contact_email': 'support@jobportal.com'
+                            }), 403
                 
             except Exception as e:
                 logger.error(f"Token verification error: {e}")
@@ -707,6 +757,992 @@ def create_app():
             logger.error(f"Error getting company statistics: {e}")
             return jsonify({
                 'success': False, 
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/companies', methods=['GET'])
+    @token_required
+    @admin_required
+    def get_admin_companies():
+        """Get all companies for admin management with pagination"""
+        try:
+            # Get pagination parameters
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 10, type=int)
+            search = request.args.get('search', '', type=str)
+            status = request.args.get('status', '', type=str)
+            sort_by = request.args.get('sort_by', 'created_at', type=str)
+            sort_order = request.args.get('sort_order', 'desc', type=str)
+            
+            # Validate pagination parameters
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 10
+            
+            # Validate sort parameters
+            valid_sort_fields = ['company_name', 'email', 'created_at', 'is_approved', 'is_active']
+            if sort_by not in valid_sort_fields:
+                sort_by = 'created_at'
+            if sort_order not in ['asc', 'desc']:
+                sort_order = 'desc'
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Build WHERE clause for filters
+            where_conditions = ["u.user_type = 'company'"]
+            params = []
+            
+            if search:
+                where_conditions.append("(cp.company_name LIKE ? OR u.email LIKE ? OR cp.industry LIKE ? OR cp.location LIKE ?)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param, search_param])
+            
+            if status:
+                if status == 'active':
+                    where_conditions.append("u.is_active = 1")
+                elif status == 'inactive':
+                    where_conditions.append("u.is_active = 0")
+                elif status == 'approved':
+                    where_conditions.append("cp.is_approved = 1")
+                elif status == 'pending':
+                    where_conditions.append("cp.is_approved = 0")
+                elif status == 'banned':
+                    where_conditions.append("u.is_banned = 1")
+                elif status == 'suspended':
+                    where_conditions.append("u.is_suspended = 1")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Get total count for pagination
+            count_query = f'''
+                SELECT COUNT(DISTINCT u.id)
+                FROM users u
+                LEFT JOIN company_profiles cp ON u.id = cp.user_id
+                WHERE {where_clause}
+            '''
+            cursor.execute(count_query, params)
+            total_companies = cursor.fetchone()[0]
+            
+            # Calculate pagination
+            total_pages = (total_companies + per_page - 1) // per_page
+            offset = (page - 1) * per_page
+            
+            # Get paginated companies with job counts
+            companies_query = f'''
+                SELECT 
+                    u.id,
+                    u.email,
+                    u.created_at as user_created_at,
+                    u.is_active,
+                    u.is_banned,
+                    u.is_suspended,
+                    u.suspended_until,
+                    cp.company_name,
+                    cp.industry,
+                    cp.company_size,
+                    cp.location,
+                    cp.website,
+                    cp.company_description,
+                    cp.logo_url,
+                    cp.is_approved,
+                    cp.approved_by,
+                    cp.approved_at,
+                    cp.created_at as profile_created_at,
+                    COUNT(jp.id) as job_count
+                FROM users u
+                LEFT JOIN company_profiles cp ON u.id = cp.user_id
+                LEFT JOIN job_postings jp ON u.id = jp.created_by_user_id AND jp.is_active = 1
+                WHERE {where_clause}
+                GROUP BY u.id
+                ORDER BY {f"cp.{sort_by}" if sort_by != "email" and sort_by != "created_at" else f"u.{sort_by}"} {sort_order.upper()}
+                LIMIT ? OFFSET ?
+            '''
+            
+            cursor.execute(companies_query, params + [per_page, offset])
+            
+            companies = []
+            for row in cursor.fetchall():
+                company = {
+                    'id': row[0],
+                    'email': row[1],
+                    'user_created_at': row[2],
+                    'is_active': bool(row[3]),
+                    'is_banned': bool(row[4]) if row[4] is not None else False,
+                    'is_suspended': bool(row[5]) if row[5] is not None else False,
+                    'suspended_until': row[6],
+                    'company_name': row[7] or 'No Company Profile',
+                    'industry': row[8],
+                    'company_size': row[9],
+                    'location': row[10],
+                    'website': row[11],
+                    'company_description': row[12],
+                    'logo_url': row[13],
+                    'is_approved': bool(row[14]) if row[14] is not None else False,
+                    'approved_by': row[15],
+                    'approved_at': row[16],
+                    'profile_created_at': row[17],
+                    'job_count': row[18],
+                    'status': (
+                        'banned' if row[4] else
+                        'suspended' if row[5] else
+                        'inactive' if not row[3] else
+                        'approved' if row[14] else
+                        'pending'
+                    )
+                }
+                companies.append(company)
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'companies': companies,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total_companies,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting admin companies: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error',
+                'companies': [],
+                'pagination': {
+                    'page': 1,
+                    'per_page': 10,
+                    'total': 0,
+                    'total_pages': 0,
+                    'has_next': False,
+                    'has_prev': False
+                }
+            }), 500
+
+    @app.route('/api/admin/companies/<int:company_id>', methods=['PUT'])
+    @token_required
+    @admin_required
+    def update_admin_company(company_id):
+        """Update company details (admin only)"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if company exists
+            cursor.execute("SELECT id FROM users WHERE id = ? AND user_type = 'company'", (company_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Company not found'
+                }), 404
+            
+            # Update user table fields
+            user_updates = []
+            user_params = []
+            
+            if 'is_active' in data:
+                user_updates.append('is_active = ?')
+                user_params.append(data['is_active'])
+            
+            if 'is_banned' in data:
+                user_updates.append('is_banned = ?')
+                user_params.append(data['is_banned'])
+            
+            if 'is_suspended' in data:
+                user_updates.append('is_suspended = ?')
+                user_params.append(data['is_suspended'])
+            
+            if 'suspended_until' in data:
+                user_updates.append('suspended_until = ?')
+                user_params.append(data['suspended_until'])
+            
+            if user_updates:
+                user_params.append(company_id)
+                cursor.execute(f"UPDATE users SET {', '.join(user_updates)} WHERE id = ?", user_params)
+            
+            # Update company profile fields
+            profile_updates = []
+            profile_params = []
+            
+            profile_fields = ['company_name', 'industry', 'company_size', 'location', 'website', 'company_description', 'logo_url']
+            for field in profile_fields:
+                if field in data:
+                    profile_updates.append(f'{field} = ?')
+                    profile_params.append(data[field])
+            
+            if 'is_approved' in data:
+                profile_updates.append('is_approved = ?')
+                profile_params.append(data['is_approved'])
+                if data['is_approved']:
+                    profile_updates.append('approved_by = ?')
+                    profile_updates.append('approved_at = ?')
+                    profile_params.extend([request.current_user_id, datetime.utcnow().isoformat()])
+            
+            if profile_updates:
+                profile_params.append(company_id)
+                cursor.execute(f"UPDATE company_profiles SET {', '.join(profile_updates)} WHERE user_id = ?", profile_params)
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Company updated successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error updating company {company_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/companies/<int:company_id>', methods=['DELETE'])
+    @token_required
+    @admin_required
+    def delete_admin_company(company_id):
+        """Delete company and all related data (admin only)"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if company exists
+            cursor.execute("SELECT id FROM users WHERE id = ? AND user_type = 'company'", (company_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Company not found'
+                }), 404
+            
+            # Delete related data in order (respecting foreign key constraints)
+            cursor.execute("DELETE FROM job_postings WHERE created_by_user_id = ?", (company_id,))
+            cursor.execute("DELETE FROM company_profiles WHERE user_id = ?", (company_id,))
+            cursor.execute("DELETE FROM users WHERE id = ?", (company_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Company deleted successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error deleting company {company_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/companies/<int:company_id>/ban', methods=['POST'])
+    @token_required
+    @admin_required
+    def ban_company(company_id):
+        """Ban a company (admin only)"""
+        try:
+            data = request.get_json() or {}
+            reason = data.get('reason', '')
+            duration = data.get('duration')  # Optional: permanent if not provided
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if company exists
+            cursor.execute("SELECT id FROM users WHERE id = ? AND user_type = 'company'", (company_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Company not found'
+                }), 404
+            
+            # Update company status
+            ban_until = None
+            if duration:
+                ban_until = (datetime.utcnow() + timedelta(days=int(duration))).isoformat()
+            
+            cursor.execute("""
+                UPDATE users 
+                SET is_banned = 1, is_active = 0, banned_reason = ?, banned_until = ?, banned_by = ?, banned_at = ?
+                WHERE id = ?
+            """, (reason, ban_until, request.current_user_id, datetime.utcnow().isoformat(), company_id))
+            
+            # Deactivate all their job postings
+            cursor.execute("UPDATE job_postings SET is_active = 0 WHERE created_by_user_id = ?", (company_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Company banned successfully{f" for {duration} days" if duration else " permanently"}'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error banning company {company_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/companies/<int:company_id>/suspend', methods=['POST'])
+    @token_required
+    @admin_required
+    def suspend_company(company_id):
+        """Suspend a company temporarily (admin only)"""
+        try:
+            data = request.get_json() or {}
+            reason = data.get('reason', '')
+            duration = data.get('duration', 7)  # Default 7 days
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if company exists
+            cursor.execute("SELECT id FROM users WHERE id = ? AND user_type = 'company'", (company_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Company not found'
+                }), 404
+            
+            # Calculate suspension end date
+            suspended_until = (datetime.utcnow() + timedelta(days=int(duration))).isoformat()
+            
+            # Update company status
+            cursor.execute("""
+                UPDATE users 
+                SET is_suspended = 1, suspended_until = ?, suspended_reason = ?, suspended_by = ?, suspended_at = ?
+                WHERE id = ?
+            """, (suspended_until, reason, request.current_user_id, datetime.utcnow().isoformat(), company_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Company suspended for {duration} days'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error suspending company {company_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users', methods=['GET'])
+    def get_admin_users():
+        """Get all users for admin management with pagination"""
+        try:
+            # Get pagination parameters
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 10, type=int)
+            search = request.args.get('search', '', type=str)
+            user_type = request.args.get('user_type', '', type=str)
+            status = request.args.get('status', '', type=str)
+            sort_by = request.args.get('sort_by', 'created_at', type=str)
+            sort_order = request.args.get('sort_order', 'desc', type=str)
+            
+            # Validate pagination parameters
+            if page < 1:
+                page = 1
+            if per_page < 1 or per_page > 100:
+                per_page = 10
+            
+            # Validate sort parameters
+            valid_sort_fields = ['email', 'user_type', 'created_at', 'is_active']
+            if sort_by not in valid_sort_fields:
+                sort_by = 'created_at'
+            if sort_order not in ['asc', 'desc']:
+                sort_order = 'desc'
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Build WHERE clause for filters
+            where_conditions = ["1=1"]  # Always true condition to start
+            params = []
+            
+            if search:
+                where_conditions.append("u.email LIKE ?")
+                search_param = f"%{search}%"
+                params.append(search_param)
+            
+            if user_type:
+                where_conditions.append("u.user_type = ?")
+                params.append(user_type)
+            
+            if status:
+                if status == 'active':
+                    where_conditions.append("u.is_active = 1 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_suspended, 0) = 0")
+                elif status == 'inactive':
+                    where_conditions.append("u.is_active = 0")
+                elif status == 'banned':
+                    where_conditions.append("COALESCE(u.is_banned, 0) = 1")
+                elif status == 'suspended':
+                    where_conditions.append("COALESCE(u.is_suspended, 0) = 1")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Get total count for pagination
+            count_query = f'''
+                SELECT COUNT(u.id)
+                FROM users u
+                WHERE {where_clause}
+            '''
+            cursor.execute(count_query, params)
+            total_users = cursor.fetchone()[0]
+            
+            # Calculate pagination
+            total_pages = (total_users + per_page - 1) // per_page
+            offset = (page - 1) * per_page
+            
+            # Get paginated users
+            users_query = f'''
+                SELECT 
+                    u.id,
+                    u.email,
+                    u.user_type,
+                    u.created_at,
+                    u.is_active,
+                    COALESCE(u.is_banned, 0) as is_banned,
+                    COALESCE(u.is_suspended, 0) as is_suspended,
+                    u.suspended_until,
+                    u.banned_until,
+                    u.banned_reason,
+                    u.suspended_reason
+                FROM users u
+                WHERE {where_clause}
+                ORDER BY u.{sort_by} {sort_order.upper()}
+                LIMIT ? OFFSET ?
+            '''
+            
+            cursor.execute(users_query, params + [per_page, offset])
+            
+            users = []
+            for row in cursor.fetchall():
+                user = {
+                    'id': row[0],
+                    'email': row[1],
+                    'user_type': row[2],
+                    'created_at': row[3],
+                    'is_active': bool(row[4]),
+                    'is_banned': bool(row[5]),
+                    'is_suspended': bool(row[6]),
+                    'suspended_until': row[7],
+                    'banned_until': row[8],
+                    'banned_reason': row[9],
+                    'suspended_reason': row[10],
+                    'status': (
+                        'banned' if row[5] else
+                        'suspended' if row[6] else
+                        'active' if row[4] else
+                        'inactive'
+                    )
+                }
+                users.append(user)
+            
+            # Get statistics for all users (not filtered)
+            stats_query = '''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN is_active = 1 AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_suspended, 0) = 0 THEN 1 ELSE 0 END) as active,
+                    SUM(CASE WHEN COALESCE(is_suspended, 0) = 1 THEN 1 ELSE 0 END) as suspended,
+                    SUM(CASE WHEN COALESCE(is_banned, 0) = 1 THEN 1 ELSE 0 END) as banned,
+                    SUM(CASE WHEN user_type = 'company' THEN 1 ELSE 0 END) as companies,
+                    SUM(CASE WHEN user_type = 'jobseeker' THEN 1 ELSE 0 END) as jobseekers,
+                    SUM(CASE WHEN user_type = 'admin' THEN 1 ELSE 0 END) as admins,
+                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as verified
+                FROM users
+            '''
+            cursor.execute(stats_query)
+            stats_row = cursor.fetchone()
+            
+            statistics = {
+                'total': stats_row[0] or 0,
+                'active': stats_row[1] or 0,
+                'suspended': stats_row[2] or 0,
+                'banned': stats_row[3] or 0,
+                'companies': stats_row[4] or 0,
+                'jobseekers': stats_row[5] or 0,
+                'admins': stats_row[6] or 0,
+                'verified': stats_row[7] or 0
+            }
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'users': users,
+                'statistics': statistics,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total_users,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting admin users: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error',
+                'users': [],
+                'pagination': {
+                    'page': 1,
+                    'per_page': 10,
+                    'total': 0,
+                    'total_pages': 0,
+                    'has_next': False,
+                    'has_prev': False
+                }
+            }), 500
+
+    @app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+    def update_admin_user(user_id):
+        """Update user details (admin only)"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("SELECT id, user_type FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            # Prevent admins from editing other admin users (except themselves)
+            if user[1] == 'admin' and user_id != request.current_user_id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot edit other admin users'
+                }), 400
+            
+            # Update user table fields
+            user_updates = []
+            user_params = []
+            
+            if 'is_active' in data:
+                user_updates.append('is_active = ?')
+                user_params.append(data['is_active'])
+            
+            if 'is_banned' in data:
+                user_updates.append('is_banned = ?')
+                user_params.append(data['is_banned'])
+            
+            if 'is_suspended' in data:
+                user_updates.append('is_suspended = ?')
+                user_params.append(data['is_suspended'])
+            
+            if 'suspended_until' in data:
+                user_updates.append('suspended_until = ?')
+                user_params.append(data['suspended_until'])
+            
+            if 'email' in data:
+                # Check if email already exists
+                cursor.execute("SELECT id FROM users WHERE email = ? AND id != ?", (data['email'], user_id))
+                if cursor.fetchone():
+                    return jsonify({
+                        'success': False,
+                        'message': 'Email already exists'
+                    }), 400
+                user_updates.append('email = ?')
+                user_params.append(data['email'])
+            
+            if user_updates:
+                user_params.append(user_id)
+                cursor.execute(f"UPDATE users SET {', '.join(user_updates)} WHERE id = ?", user_params)
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User updated successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error updating user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users/<int:user_id>/ban', methods=['POST'])
+    @token_required
+    @admin_required
+    def ban_user(user_id):
+        """Ban a user (admin only)"""
+        try:
+            data = request.get_json() or {}
+            reason = data.get('reason', '')
+            duration = data.get('duration')  # Optional: permanent if not provided
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists and is not admin
+            cursor.execute("SELECT id, user_type FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            if user[1] == 'admin':
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot ban admin users'
+                }), 400
+            
+            # Update user status
+            ban_until = None
+            if duration:
+                ban_until = (datetime.utcnow() + timedelta(days=int(duration))).isoformat()
+            
+            cursor.execute("""
+                UPDATE users 
+                SET is_banned = 1, is_active = 0, banned_reason = ?, banned_until = ?, banned_by = ?, banned_at = ?
+                WHERE id = ?
+            """, (reason, ban_until, request.current_user_id, datetime.utcnow().isoformat(), user_id))
+            
+            # If it's a company, deactivate their job postings
+            if user[1] == 'company':
+                cursor.execute("UPDATE job_postings SET is_active = 0 WHERE created_by_user_id = ?", (user_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': f'User banned successfully{f" for {duration} days" if duration else " permanently"}'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error banning user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users/<int:user_id>/unban', methods=['POST'])
+    @token_required
+    @admin_required
+    def unban_user(user_id):
+        """Unban a user (admin only)"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("SELECT id, user_type FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            # Update user status - remove ban
+            cursor.execute("""
+                UPDATE users 
+                SET is_banned = 0, is_active = 1, banned_reason = NULL, banned_until = NULL, 
+                    banned_by = NULL, banned_at = NULL
+                WHERE id = ?
+            """, (user_id,))
+            
+            # If it's a company, reactivate their job postings (optional - might want admin control over this)
+            if user[1] == 'company':
+                cursor.execute("UPDATE job_postings SET is_active = 1 WHERE created_by_user_id = ? AND approved_by_admin = 1", (user_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User unbanned successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error unbanning user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users/<int:user_id>/suspend', methods=['POST'])
+    # @token_required
+    # @admin_required
+    def suspend_user(user_id):
+        """Suspend a user temporarily (admin only)"""
+        try:
+            data = request.get_json() or {}
+            reason = data.get('reason', '')
+            duration = data.get('duration', 7)  # Default 7 days
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists and is not admin
+            cursor.execute("SELECT id, user_type FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            if user[1] == 'admin':
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot suspend admin users'
+                }), 400
+            
+            # Calculate suspension end date
+            suspended_until = (datetime.utcnow() + timedelta(days=int(duration))).isoformat()
+            
+            # Update user status
+            cursor.execute("""
+                UPDATE users 
+                SET is_suspended = 1, suspended_until = ?, suspended_reason = ?, suspended_by = ?, suspended_at = ?
+                WHERE id = ?
+            """, (suspended_until, reason, 1, datetime.utcnow().isoformat(), user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': f'User suspended for {duration} days'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error suspending user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users/<int:user_id>/activate', methods=['POST'])
+    @token_required
+    @admin_required
+    def activate_user(user_id):
+        """Activate/unban/unsuspend a user (admin only)"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            # Clear all restrictions and activate user
+            cursor.execute("""
+                UPDATE users 
+                SET is_active = 1, is_banned = 0, is_suspended = 0, 
+                    banned_until = NULL, suspended_until = NULL,
+                    banned_reason = NULL, suspended_reason = NULL,
+                    banned_by = NULL, suspended_by = NULL,
+                    banned_at = NULL, suspended_at = NULL
+                WHERE id = ?
+            """, (user_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User activated successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error activating user {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users/create', methods=['POST'])
+    def create_user():
+        """Create a new user (admin only)"""
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            if not data or not data.get('email') or not data.get('password'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Email and password are required'
+                }), 400
+            
+            email = data.get('email').strip().lower()
+            password = data.get('password')
+            first_name = data.get('first_name', '').strip()
+            last_name = data.get('last_name', '').strip()
+            user_type = data.get('user_type', 'jobseeker')
+            phone = data.get('phone', '').strip()
+            location = data.get('location', '').strip()
+            company_name = data.get('company_name', '').strip()
+            
+            # Validate user type
+            valid_user_types = ['jobseeker', 'company', 'admin', 'manager']
+            if user_type not in valid_user_types:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid user type'
+                }), 400
+            
+            # Validate email format
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, email):
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid email format'
+                }), 400
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user already exists
+            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': 'User with this email already exists'
+                }), 400
+            
+            # Hash password
+            import hashlib
+            hashed_password = hashlib.sha256(password.encode()).hexdigest()
+            
+            # Create user
+            cursor.execute("""
+                INSERT INTO users (
+                    email, password_hash, user_type,
+                    is_active, is_verified, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                email, hashed_password, user_type,
+                True, True, datetime.utcnow().isoformat()
+            ))
+            
+            user_id = cursor.lastrowid
+            
+            # Create user profile with basic info
+            if first_name or last_name or phone:
+                cursor.execute("""
+                    INSERT INTO user_profiles (
+                        user_id, first_name, last_name, phone, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (user_id, first_name, last_name, phone, datetime.utcnow().isoformat()))
+            
+            # Create specific profile based on user type
+            if user_type == 'company' and company_name:
+                cursor.execute("""
+                    INSERT INTO company_profiles (
+                        user_id, company_name, is_approved, created_at
+                    ) VALUES (?, ?, ?, ?)
+                """, (user_id, company_name, True, datetime.utcnow().isoformat()))
+            elif user_type == 'jobseeker' and location:
+                cursor.execute("""
+                    INSERT INTO jobseeker_profiles (
+                        user_id, location, available_for_work, created_at
+                    ) VALUES (?, ?, ?, ?)
+                """, (user_id, location, True, datetime.utcnow().isoformat()))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User created successfully',
+                'user_id': user_id
+            })
+            
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+    @token_required
+    @admin_required
+    def delete_user(user_id):
+        """Delete a user and all related data (admin only)"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Check if user exists and is not admin
+            cursor.execute("SELECT id, user_type FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            if user[1] == 'admin':
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot delete admin users'
+                }), 400
+            
+            # Delete related data in order (respecting foreign key constraints)
+            cursor.execute("DELETE FROM job_postings WHERE created_by_user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM company_profiles WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM jobseeker_profiles WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'User deleted successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error deleting user {user_id}: {e}")
+            return jsonify({
+                'success': False,
                 'message': 'Internal server error'
             }), 500
 
@@ -1450,10 +2486,230 @@ def create_app():
             'endpoints': {
                 'auth': '/api/auth/*',
                 'jobs': '/api/jobs/*',
+                'blogs': '/api/blogs/*',
+                'admin': '/api/admin/*',
                 'health': '/api/health',
                 'info': '/api/info'
             }
         })
+    
+    # ============================================================================
+    # BLOG API ENDPOINTS
+    # ============================================================================
+    
+    @app.route('/api/blogs', methods=['GET'])
+    def get_blogs():
+        """Get blogs with filtering and pagination"""
+        try:
+            # Get query parameters
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 10)), 50)  # Max 50 per page
+            search = request.args.get('search', '')
+            author_id = request.args.get('author_id', type=int)
+            featured_only = request.args.get('featured_only', 'false').lower() == 'true'
+            published_only = request.args.get('published_only', 'true').lower() == 'true'
+            tags = request.args.get('tags', '')
+            order_by = request.args.get('order_by', 'created_at')
+            order_direction = request.args.get('order_direction', 'DESC')
+            
+            # Build filters
+            filters = {
+                'published_only': published_only,
+                'search': search if search else None,
+                'author_id': author_id,
+                'featured_only': featured_only,
+                'tags': tags if tags else None,
+                'order_by': order_by,
+                'order_direction': order_direction
+            }
+            
+            # Remove None values
+            filters = {k: v for k, v in filters.items() if v is not None}
+            
+            result = blog_service.search_blogs(filters, page, per_page)
+            
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'blogs': result['blogs'],
+                    'pagination': result['pagination']
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': result.get('message', 'Failed to fetch blogs')
+                }), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting blogs: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/<int:blog_id>', methods=['GET'])
+    def get_blog_by_id(blog_id):
+        """Get a specific blog by ID"""
+        try:
+            increment_views = request.args.get('increment_views', 'false').lower() == 'true'
+            blog = blog_service.get_blog_by_id(blog_id, increment_views)
+            
+            if blog:
+                return jsonify({
+                    'success': True,
+                    'blog': blog
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+                
+        except Exception as e:
+            logger.error(f"Error getting blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/slug/<slug>', methods=['GET'])
+    def get_blog_by_slug(slug):
+        """Get a specific blog by slug"""
+        try:
+            increment_views = request.args.get('increment_views', 'false').lower() == 'true'
+            blog = blog_service.get_blog_by_slug(slug, increment_views)
+            
+            if blog:
+                return jsonify({
+                    'success': True,
+                    'blog': blog
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Blog not found'
+                }), 404
+                
+        except Exception as e:
+            logger.error(f"Error getting blog by slug {slug}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs', methods=['POST'])
+    @token_required
+    def create_blog():
+        """Create a new blog post (authenticated users only)"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            # Validate required fields
+            required_fields = ['title', 'content']
+            for field in required_fields:
+                if not data.get(field, '').strip():
+                    return jsonify({
+                        'success': False,
+                        'message': f'{field.title()} is required'
+                    }), 400
+            
+            result = blog_service.create_blog(data, request.current_user_id)
+            
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'message': result['message'],
+                    'blog_id': result['blog_id'],
+                    'slug': result['slug']
+                }), 201
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': result['message']
+                }), 400
+                
+        except Exception as e:
+            logger.error(f"Error creating blog: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/<int:blog_id>', methods=['PUT'])
+    @token_required
+    def update_blog(blog_id):
+        """Update a blog post (author only)"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            result = blog_service.update_blog(blog_id, data, request.current_user_id)
+            
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'message': result['message']
+                })
+            else:
+                status_code = 404 if 'not found' in result['message'].lower() else 403 if 'unauthorized' in result['message'].lower() else 400
+                return jsonify({
+                    'success': False,
+                    'message': result['message']
+                }), status_code
+                
+        except Exception as e:
+            logger.error(f"Error updating blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/<int:blog_id>', methods=['DELETE'])
+    @token_required
+    def delete_blog(blog_id):
+        """Delete a blog post (author only)"""
+        try:
+            result = blog_service.delete_blog(blog_id, request.current_user_id)
+            
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'message': result['message']
+                })
+            else:
+                status_code = 404 if 'not found' in result['message'].lower() else 403 if 'unauthorized' in result['message'].lower() else 400
+                return jsonify({
+                    'success': False,
+                    'message': result['message']
+                }), status_code
+                
+        except Exception as e:
+            logger.error(f"Error deleting blog {blog_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
+            }), 500
+
+    @app.route('/api/blogs/upload-image', methods=['POST'])
+    @token_required
+    def upload_blog_image():
+        """Upload image for blog posts (will implement Cloudinary integration)"""
+        # For now, return a placeholder - we'll implement Cloudinary later
+        return jsonify({
+            'success': False,
+            'message': 'Image upload not yet implemented. Please provide Cloudinary credentials to enable this feature.'
+        }), 501
     
     # ============================================================================
     # ERROR HANDLERS
@@ -1488,6 +2744,7 @@ if __name__ == '__main__':
     try:
         auth_service.db.init_auth_tables()
         job_service.db.init_job_management_tables()
+        blog_service.init_blog_tables()
         logger.info("Database tables initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")

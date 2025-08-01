@@ -224,10 +224,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         protected: true
       },
       {
-        title: 'Users',
+        title: 'User Management',
         href: '/admin/users',
         icon: Users,
-        description: 'Manage users',
+        description: 'Manage all users',
+        protected: true
+      },
+      {
+        title: 'Company Management',
+        href: '/admin/companies',
+        icon: Briefcase,
+        description: 'Manage all companies',
+        badge: pendingCounts.companies > 0 ? pendingCounts.companies.toString() : null,
         protected: true
       },
       {
@@ -236,14 +244,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         icon: FileText,
         description: 'Review job postings',
         badge: pendingCounts.jobs > 0 ? pendingCounts.jobs.toString() : null,
-        protected: true
-      },
-      {
-        title: 'Company Approvals',
-        href: '/admin/companies',
-        icon: Briefcase,
-        description: 'Review company profiles',
-        badge: pendingCounts.companies > 0 ? pendingCounts.companies.toString() : null,
         protected: true
       }
     ] : [])
