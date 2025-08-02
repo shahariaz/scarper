@@ -13,6 +13,7 @@ export default function UserSearchPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [totalUsers, setTotalUsers] = useState(0)
+  const [followingUsers, setFollowingUsers] = useState(new Set()) // Track followed users
 
   const searchUsers = useCallback(async (page = 1, resetResults = true) => {
     if (resetResults) {
@@ -94,6 +95,45 @@ export default function UserSearchPage() {
   const handleSearch = (e) => {
     e.preventDefault()
     searchUsers(1, true)
+  }
+
+  const handleFollowToggle = async (userId, isCurrentlyFollowing) => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        alert('Please login to follow users')
+        return
+      }
+
+      const endpoint = isCurrentlyFollowing ? 'unfollow' : 'follow'
+      const response = await fetch(`http://localhost:5000/api/users/${userId}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        // Update the following status in the UI
+        if (isCurrentlyFollowing) {
+          setFollowingUsers(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(userId)
+            return newSet
+          })
+        } else {
+          setFollowingUsers(prev => new Set(prev.add(userId)))
+        }
+      } else {
+        alert(data.message || 'Failed to update follow status')
+      }
+    } catch (err) {
+      console.error('Error toggling follow:', err)
+      alert('Failed to update follow status')
+    }
   }
 
   const getUserTypeColor = (type) => {
@@ -227,8 +267,15 @@ export default function UserSearchPage() {
                   >
                     View Profile
                   </a>
-                  <button className="bg-gray-700/50 hover:bg-gray-600/50 text-white px-4 py-2 rounded-lg transition-all">
-                    💬
+                  <button 
+                    onClick={() => handleFollowToggle(user.id, followingUsers.has(user.id))}
+                    className={`px-4 py-2 rounded-lg transition-all text-sm font-medium ${
+                      followingUsers.has(user.id)
+                        ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                        : 'bg-yellow-500 hover:bg-yellow-600 text-gray-900'
+                    }`}
+                  >
+                    {followingUsers.has(user.id) ? 'Unfollow' : 'Follow'}
                   </button>
                 </div>
               </div>

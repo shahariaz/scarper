@@ -3172,6 +3172,59 @@ def create_app():
                 'message': 'Internal server error'
             }), 500
 
+    @app.route('/api/users/<int:user_id>/blogs', methods=['GET'])
+    def get_user_blogs(user_id):
+        """Get blogs posted by a specific user"""
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 10, type=int), 50)
+            
+            # Check if user exists
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM users WHERE id = ?', (user_id,))
+            user = cursor.fetchone()
+            conn.close()
+            
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found'
+                }), 404
+            
+            # Get user's blogs using simplified approach
+            result = blog_service.search_blogs({
+                'author_id': user_id,
+                'published_only': False  # Show all user's blogs including drafts for their own profile
+            }, page, per_page)
+            
+            if result['success']:
+                pagination = result.get('pagination', {})
+                return jsonify({
+                    'success': True,
+                    'blogs': result['blogs'],
+                    'pagination': {
+                        'page': page,
+                        'per_page': per_page,
+                        'total': pagination.get('total_count', 0),
+                        'pages': pagination.get('total_pages', 0),
+                        'has_next': pagination.get('has_next', False),
+                        'has_prev': pagination.get('has_prev', False)
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': result.get('message', 'Failed to fetch user blogs')
+                }), 500
+                
+        except Exception as e:
+            logger.error(f"Error getting user blogs {user_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': f'Internal server error: {str(e)}'
+            }), 500
+
     @app.route('/api/users/<int:user_id>/activity-feed', methods=['GET'])
     def get_user_activity_feed(user_id):
         """Get user's activity feed (for followers)"""
