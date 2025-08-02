@@ -10,16 +10,34 @@ try:
     if cursor.fetchone():
         print("Users table exists")
         
+        # Check users table schema
+        cursor.execute("PRAGMA table_info(users)")
+        columns = cursor.fetchall()
+        print("Users table columns:", [col[1] for col in columns])
+        
         cursor.execute("SELECT COUNT(*) FROM users WHERE user_type = 'company'")
         company_count = cursor.fetchone()[0]
         print(f"Company users: {company_count}")
         
         if company_count > 0:
-            cursor.execute("SELECT id, email, company_name, user_type, is_approved FROM users WHERE user_type = 'company' LIMIT 5")
+            cursor.execute("SELECT id, email, user_type FROM users WHERE user_type = 'company' LIMIT 5")
             companies = cursor.fetchall()
             print("Sample companies:")
             for company in companies:
-                print(f"  ID: {company[0]}, Email: {company[1]}, Name: {company[2]}, Type: {company[3]}, Approved: {company[4]}")
+                print(f"  ID: {company[0]}, Email: {company[1]}, Type: {company[2]}")
+                
+            # Get company profiles for these users
+            cursor.execute("""
+                SELECT u.id, u.email, cp.company_name, cp.industry, cp.location 
+                FROM users u 
+                JOIN company_profiles cp ON u.id = cp.user_id 
+                WHERE u.user_type = 'company' 
+                LIMIT 5
+            """)
+            profiles = cursor.fetchall()
+            print("Company profiles:")
+            for profile in profiles:
+                print(f"  ID: {profile[0]}, Email: {profile[1]}, Company: {profile[2]}, Industry: {profile[3]}, Location: {profile[4]}")
         else:
             print("No company users found")
     else:

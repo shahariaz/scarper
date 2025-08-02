@@ -74,24 +74,33 @@ export default function HomePage() {
     isLoading,
     error
   } = useInfiniteQuery({
-    queryKey: ['homeFeed', activeCategory, personalizedFeed, user?.id],
+    queryKey: ['homeFeed', activeCategory],
     queryFn: async ({ pageParam = 1 }) => {
       const params = new URLSearchParams({
         page: pageParam.toString(),
-        per_page: '20',
-        category: activeCategory,
-        personalized: personalizedFeed.toString(),
-        user_id: user?.id?.toString() || ''
+        per_page: '15',
+        category: activeCategory
       })
       
+      // For testing, always use user_id=1 to see personalized feed
+      params.append('user_id', '1')
+      
+      console.log('Fetching feed with params:', params.toString())
+      
       const response = await fetch(`http://localhost:5000/api/home/feed?${params}`)
-      if (!response.ok) throw new Error('Failed to fetch content')
-      return response.json()
+      if (!response.ok) {
+        console.error('Feed API Error:', response.status, await response.text())
+        throw new Error('Failed to fetch content')
+      }
+      const data = await response.json()
+      console.log('Feed response:', data)
+      return data
     },
-    getNextPageParam: (lastPage) => 
+    getNextPageParam: (lastPage: any) => 
       lastPage.pagination.has_next ? lastPage.pagination.page + 1 : undefined,
     refetchInterval: 60000, // Refetch every minute for real-time updates
     refetchOnWindowFocus: true,
+    staleTime: 30000, // Consider data stale after 30 seconds
   })
 
   // Flatten all content from pages

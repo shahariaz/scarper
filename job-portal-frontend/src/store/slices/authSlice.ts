@@ -12,6 +12,7 @@ export interface User {
   last_name?: string
   phone?: string
   avatar_url?: string
+  cover_url?: string
   bio?: string
   // Company specific fields
   company_name?: string
@@ -379,6 +380,11 @@ const authSlice = createSlice({
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
       }
+    },
+    updateUserField: (state, action: PayloadAction<{ field: keyof User; value: unknown }>) => {
+      if (state.user) {
+        (state.user as Record<string, unknown>)[action.payload.field] = action.payload.value
+      }
     }
   },
   extraReducers: (builder) => {
@@ -508,5 +514,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { clearError, setTokens, clearAuth } = authSlice.actions
+export const { clearError, setTokens, clearAuth, updateUserField } = authSlice.actions
 export default authSlice.reducer

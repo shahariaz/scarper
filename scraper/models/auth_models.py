@@ -343,7 +343,7 @@ class AuthService:
             cursor.execute('''
                 SELECT u.id, u.email, u.user_type, u.is_active, u.is_verified,
                        u.created_at, u.last_login,
-                       p.first_name, p.last_name, p.phone, p.avatar_url, p.bio
+                       p.first_name, p.last_name, p.phone, p.avatar_url, p.bio, p.cover_url
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
                 WHERE u.id = ?
@@ -365,7 +365,8 @@ class AuthService:
                 'last_name': user_data[8],
                 'phone': user_data[9],
                 'avatar_url': user_data[10],
-                'bio': user_data[11]
+                'bio': user_data[11],
+                'cover_url': user_data[12]
             }
             
             # Get specific profile data based on user type
@@ -424,7 +425,7 @@ class AuthService:
         
         try:
             # Update basic user profile
-            basic_fields = ['first_name', 'last_name', 'phone', 'avatar_url', 'bio']
+            basic_fields = ['first_name', 'last_name', 'phone', 'avatar_url', 'bio', 'cover_url']
             basic_updates = []
             basic_values = []
             
@@ -887,6 +888,10 @@ class AuthService:
                 where_conditions.append("jp.experience_level = ?")
                 params.append(filters['experience_level'])
             
+            # Exclude companies (for People page)
+            if 'exclude_companies' in filters and filters['exclude_companies']:
+                where_conditions.append("u.user_type != 'company'")
+            
             where_clause = " AND ".join(where_conditions)
             
             # Get total count for pagination
@@ -996,6 +1001,102 @@ class AuthService:
                     'has_next': False,
                     'has_prev': False
                 }
+            }
+        
+        finally:
+            conn.close()
+
+    def update_user_avatar(self, user_id: int, user_type: str, avatar_url: str) -> Dict[str, Any]:
+        """Update user avatar/profile picture"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Update avatar in user_profiles table
+            cursor.execute('''
+                UPDATE user_profiles 
+                SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            ''', (avatar_url, user_id))
+            
+            # Also update in type-specific profile if it's a company
+            if user_type == 'company':
+                cursor.execute('''
+                    UPDATE company_profiles 
+                    SET logo_url = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                ''', (avatar_url, user_id))
+            
+            if cursor.rowcount == 0:
+                return {
+                    'success': False,
+                    'message': 'User profile not found'
+                }
+            
+            conn.commit()
+            
+            return {
+                'success': True,
+                'message': 'Profile picture updated successfully',
+                'avatar_url': avatar_url
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error updating user avatar: {e}")
+            return {
+                'success': False,
+                'message': 'Failed to update profile picture'
+            }
+        
+        finally:
+            conn.close()
+
+    def update_user_cover(self, user_id: int, user_type: str, cover_url: str) -> Dict[str, Any]:
+        """Update user cover photo"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Check if cover_url column exists, if not add it
+            cursor.execute("PRAGMA table_info(user_profiles)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'cover_url' not in columns:
+                # Add cover_url column to user_profiles table
+                cursor.execute('''
+                    ALTER TABLE user_profiles 
+                    ADD COLUMN cover_url VARCHAR(500)
+                ''')
+                logger.info("Added cover_url column to user_profiles table")
+            
+            # Update cover photo in user_profiles table
+            cursor.execute('''
+                UPDATE user_profiles 
+                SET cover_url = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            ''', (cover_url, user_id))
+            
+            if cursor.rowcount == 0:
+                return {
+                    'success': False,
+                    'message': 'User profile not found'
+                }
+            
+            conn.commit()
+            
+            return {
+                'success': True,
+                'message': 'Cover photo updated successfully',
+                'cover_url': cover_url
+            }
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error updating user cover: {e}")
+            return {
+                'success': False,
+                'message': 'Failed to update cover photo'
             }
         
         finally:

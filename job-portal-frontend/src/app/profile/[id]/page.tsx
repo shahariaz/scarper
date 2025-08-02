@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ImageViewer from '@/components/ui/image-viewer';
 import {
   UserPlus,
   UserMinus,
@@ -32,6 +33,7 @@ import {
   Briefcase,
   ThumbsUp,
   BookOpen,
+  Eye,
 } from 'lucide-react';
 
 export default function UserProfile() {
@@ -110,19 +112,69 @@ export default function UserProfile() {
     : profile.email[0].toUpperCase();
 
   return (
-    <div className="min-h-screen bg-gray-950 py-8">
+    <div className="min-h-screen bg-gray-950">
+      {/* Cover Photo Section */}
+      <div className="relative h-48 bg-gradient-to-r from-blue-600 to-blue-700 overflow-hidden group"
+           style={profile.cover_url ? { 
+             backgroundImage: `url(${profile.cover_url})`,
+             backgroundSize: 'cover',
+             backgroundPosition: 'center'
+           } : {}}>
+        <div className="absolute inset-0 bg-black/20"></div>
+        
+        {/* Cover Image Viewer - only show if cover image exists */}
+        {profile.cover_url && (
+          <ImageViewer
+            src={profile.cover_url}
+            alt={`${displayName}'s Cover Photo`}
+            title={`${displayName}'s Cover Photo`}
+            trigger={
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 cursor-pointer">
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 hover:bg-white/30 transition-colors">
+                  <div className="flex items-center gap-2 text-white">
+                    <Eye className="h-4 w-4" />
+                    <span className="text-sm font-medium">View Cover Photo</span>
+                  </div>
+                </div>
+              </div>
+            }
+          />
+        )}
+      </div>
+
       <div className="container mx-auto px-4">
         {/* Profile Header */}
-        <div className="mb-8">
+        <div className="relative -mt-16 mb-8">
           <div className="flex flex-col md:flex-row gap-6 items-start">
-            <Avatar className="w-32 h-32">
-              <AvatarImage src={profile.avatar_url} alt={displayName} />
-              <AvatarFallback className="text-2xl bg-blue-600 text-white">
-                {avatarFallback}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative group">
+              <Avatar className="w-32 h-32 ring-4 ring-gray-800 shadow-lg cursor-pointer">
+                <AvatarImage src={profile.avatar_url} alt={displayName} />
+                <AvatarFallback className="text-2xl bg-blue-600 text-white">
+                  {avatarFallback}
+                </AvatarFallback>
+              </Avatar>
+              
+              {/* Profile Image Viewer - only show if avatar exists */}
+              {profile.avatar_url && (
+                <ImageViewer
+                  src={profile.avatar_url}
+                  alt={`${displayName}'s Profile Picture`}
+                  title={`${displayName}'s Profile Picture`}
+                  trigger={
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full">
+                      <div className="bg-white/90 text-gray-800 rounded-lg px-3 py-1.5 hover:bg-white transition-colors shadow-lg">
+                        <div className="flex items-center gap-1.5">
+                          <Eye className="h-3 w-3" />
+                          <span className="text-xs font-medium">View</span>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                />
+              )}
+            </div>
             
-            <div className="flex-1">
+            <div className="flex-1 pt-16">
               <div className="flex flex-col md:flex-row md:items-center gap-4 mb-4">
                 <div>
                   <h1 className="text-3xl font-bold text-white mb-2">{displayName}</h1>
@@ -200,7 +252,7 @@ export default function UserProfile() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 px-4">
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-white mb-1">
@@ -249,7 +301,8 @@ export default function UserProfile() {
         </div>
 
         {/* Content Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="px-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4 bg-gray-800">
             <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600">
               Overview

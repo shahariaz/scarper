@@ -67,6 +67,7 @@ export interface UserProfile {
   first_name?: string;
   last_name?: string;
   avatar_url?: string;
+  cover_url?: string;
   bio?: string;
   created_at: string;
   social_stats: SocialStats;

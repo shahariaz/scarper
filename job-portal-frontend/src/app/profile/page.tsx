@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState, AppDispatch } from '@/store/store'
-import { fetchUserProfile } from '@/store/slices/authSlice'
+import { fetchUserProfile, updateUserProfile, updateUserField } from '@/store/slices/authSlice'
+import { fetchWithAuth } from '@/lib/auth-utils'
 import DashboardLayout from '@/components/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import ImageUpload from '@/components/ui/image-upload'
+import ImageViewer from '@/components/ui/image-viewer'
+import toast from 'react-hot-toast'
 import { 
   Loader2, 
   User, 
@@ -188,30 +192,161 @@ export default function ProfilePage() {
         {/* Header Section */}
         <div className="relative mb-8">
           {/* Cover Photo */}
-          <div className="h-48 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg relative overflow-hidden">
+          <div className="h-48 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg relative overflow-hidden group cursor-pointer"
+               style={user.cover_url ? { 
+                 backgroundImage: `url(${user.cover_url})`,
+                 backgroundSize: 'cover',
+                 backgroundPosition: 'center'
+               } : {}}>
             <div className="absolute inset-0 bg-black/20"></div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="absolute top-4 right-4 bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20"
-            >
-              <Camera className="h-4 w-4 mr-2" />
-              Change Cover
-            </Button>
+            
+            {/* Cover Image Viewer - only show if cover image exists */}
+            {user.cover_url && (
+              <ImageViewer
+                src={user.cover_url}
+                alt="Cover Photo"
+                title="Cover Photo"
+                trigger={
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                    <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 hover:bg-white/30 transition-colors">
+                      <div className="flex items-center gap-2 text-white">
+                        <Eye className="h-4 w-4" />
+                        <span className="text-sm font-medium">View Cover Photo</span>
+                      </div>
+                    </div>
+                  </div>
+                }
+              />
+            )}
+            
+            {/* Cover Image Upload */}
+            <div className="absolute top-4 right-4">
+              <ImageUpload
+                type="cover"
+                currentImage={user.cover_url}
+                onImageUpdate={async (imageUrl: string) => {
+                  try {
+                    console.log('🌅 Starting cover photo update with URL:', imageUrl)
+                    
+                    // Update backend with token refresh capability
+                    const response = await fetchWithAuth(
+                      'http://localhost:5000/api/auth/profile/cover',
+                      {
+                        method: 'PUT',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ cover_url: imageUrl }),
+                      },
+                      tokens.access_token!,
+                      tokens.refresh_token!,
+                      (newTokens) => {
+                        // Update Redux store with new tokens
+                        dispatch({ type: 'auth/setTokens', payload: newTokens })
+                      }
+                    )
+
+                    console.log('🌅 Backend response status:', response.status)
+                    const data = await response.json()
+                    console.log('🌅 Backend response data:', data)
+                    
+                    if (data.success) {
+                      console.log('🌅 Backend update successful, updating Redux state...')
+                      // Immediately update Redux state with the new cover_url
+                      dispatch(updateUserField({ field: 'cover_url', value: imageUrl }))
+                      toast.success('Cover photo updated successfully!')
+                    } else {
+                      throw new Error(data.message || 'Failed to update cover photo')
+                    }
+                  } catch (error: unknown) {
+                    console.error('❌ Error updating cover:', error)
+                    const errorMessage = error instanceof Error ? error.message : 'Failed to update cover photo'
+                    toast.error(errorMessage)
+                  }
+                }}
+                className="bg-white/10 backdrop-blur-sm border-white/20 text-white hover:bg-white/20"
+              />
+            </div>
           </div>
 
           {/* Profile Info */}
           <div className="relative -mt-16 px-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6">
-              <Avatar className="h-32 w-32 ring-4 ring-gray-800 shadow-lg">
-                <AvatarImage src={user.avatar_url} alt="Profile" />
-                <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                  {user.user_type === 'company' 
-                    ? user.company_name?.charAt(0).toUpperCase() 
-                    : `${user.first_name?.charAt(0) || ''}${user.last_name?.charAt(0) || ''}`.toUpperCase() || 'U'
-                  }
-                </AvatarFallback>
-              </Avatar>
+              {/* Profile Avatar with Upload */}
+              <div className="relative group">
+                <Avatar className="h-32 w-32 ring-4 ring-gray-800 shadow-lg cursor-pointer">
+                  <AvatarImage src={user.avatar_url} alt="Profile" />
+                  <AvatarFallback className="text-2xl font-bold bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                    {user.user_type === 'company' 
+                      ? user.company_name?.charAt(0).toUpperCase() 
+                      : `${user.first_name?.charAt(0) || ''}${user.last_name?.charAt(0) || ''}`.toUpperCase() || 'U'
+                    }
+                  </AvatarFallback>
+                </Avatar>
+                
+                {/* Profile Image Viewer - only show if avatar exists */}
+                {user.avatar_url && (
+                  <ImageViewer
+                    src={user.avatar_url}
+                    alt="Profile Picture"
+                    title="Profile Picture"
+                    trigger={
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded-full">
+                        <div className="bg-white/90 text-gray-800 rounded-lg px-3 py-1.5 hover:bg-white transition-colors shadow-lg">
+                          <div className="flex items-center gap-1.5">
+                            <Eye className="h-3 w-3" />
+                            <span className="text-xs font-medium">View</span>
+                          </div>
+                        </div>
+                      </div>
+                    }
+                  />
+                )}
+                
+                {/* Avatar Upload Button */}
+                <div className="absolute -bottom-2 -right-2">
+                  <ImageUpload
+                    type="profile"
+                    currentImage={user.avatar_url}
+                    onImageUpdate={async (imageUrl: string) => {
+                      try {
+                        // Update backend with token refresh capability
+                        const response = await fetchWithAuth(
+                          'http://localhost:5000/api/auth/profile/avatar',
+                          {
+                            method: 'PUT',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ avatar_url: imageUrl }),
+                          },
+                          tokens.access_token!,
+                          tokens.refresh_token!,
+                          (newTokens) => {
+                            // Update Redux store with new tokens
+                            dispatch({ type: 'auth/setTokens', payload: newTokens })
+                          }
+                        )
+
+                        const data = await response.json()
+                        
+                        if (data.success) {
+                          // Immediately update Redux state with the new avatar_url
+                          dispatch(updateUserField({ field: 'avatar_url', value: imageUrl }))
+                          toast.success('Profile picture updated successfully!')
+                        } else {
+                          throw new Error(data.message || 'Failed to update profile picture')
+                        }
+                      } catch (error: unknown) {
+                        console.error('Error updating avatar:', error)
+                        const errorMessage = error instanceof Error ? error.message : 'Failed to update profile picture'
+                        toast.error(errorMessage)
+                      }
+                    }}
+                    className="bg-white shadow-lg hover:shadow-xl border-2 border-blue-200 hover:border-blue-300"
+                  />
+                </div>
+              </div>
 
               <div className="flex-1 pb-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
