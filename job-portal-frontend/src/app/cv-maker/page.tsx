@@ -191,7 +191,13 @@ export default function CVMakerPage() {
             skills: [],
             problem_solving: [],
             projects: [],
-            certifications: []
+            certifications: [],
+            formatting: {
+              font_family: 'Inter',
+              font_size: 'medium',
+              divider_color: '#e2e8f0',
+              text_color: '#1e293b'
+            }
           }
         }),
       });

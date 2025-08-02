@@ -67,7 +67,9 @@ interface CV {
       location?: string;
       linkedin?: string;
       portfolio?: string;
+      github?: string;
       summary?: string;
+      text_alignment?: 'left' | 'center' | 'right';
     };
     experience?: Array<{
       id?: string;
@@ -119,6 +121,12 @@ interface CV {
       date: string;
       url?: string;
     }>;
+    formatting?: {
+      font_family?: 'Inter' | 'Arial' | 'Times New Roman' | 'Helvetica' | 'Georgia';
+      font_size?: 'small' | 'medium' | 'large';
+      divider_color?: string;
+      text_color?: string;
+    };
   };
 }
 
@@ -137,7 +145,8 @@ export default function CVEditor() {
     'skills',
     'problem_solving',
     'projects',
-    'certifications'
+    'certifications',
+    'formatting'
   ]);
 
   const sensors = useSensors(
@@ -441,6 +450,35 @@ export default function CVEditor() {
     });
   };
 
+  // Formatting handlers
+  const updateFormatting = (field: string, value: string) => {
+    if (!cv) return;
+    setCV({
+      ...cv,
+      cv_data: {
+        ...cv.cv_data,
+        formatting: {
+          ...cv.cv_data.formatting,
+          [field]: value
+        }
+      }
+    });
+  };
+
+  const updatePersonalInfoAlignment = (alignment: 'left' | 'center' | 'right') => {
+    if (!cv) return;
+    setCV({
+      ...cv,
+      cv_data: {
+        ...cv.cv_data,
+        personal_info: {
+          ...cv.cv_data.personal_info,
+          text_alignment: alignment
+        }
+      }
+    });
+  };
+
   const sections = [
     { id: 'personal', name: 'Personal Info', icon: User, required: true },
     { id: 'experience', name: 'Experience', icon: Briefcase, required: false },
@@ -449,6 +487,7 @@ export default function CVEditor() {
     { id: 'problem_solving', name: 'Problem Solving', icon: Code, required: false },
     { id: 'projects', name: 'Projects', icon: FileText, required: false },
     { id: 'certifications', name: 'Certifications', icon: Award, required: false },
+    { id: 'formatting', name: 'Formatting & Style', icon: Layout, required: false },
   ];
 
   // Sortable Section Item Component
@@ -612,6 +651,52 @@ export default function CVEditor() {
                       className="pl-10"
                     />
                   </div>
+                </div>
+                <div>
+                  <Label htmlFor="github">GitHub Profile</Label>
+                  <div className="relative mt-1">
+                    <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <Input
+                      id="github"
+                      value={cv?.cv_data.personal_info?.github || ''}
+                      onChange={(e) => updatePersonalInfo('github', e.target.value)}
+                      placeholder="github.com/johndoe"
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Header Alignment Options */}
+              <div>
+                <Label className="text-base font-semibold">Header Text Alignment</Label>
+                <p className="text-sm text-slate-600 mb-3">Choose how your name and contact info are aligned in the CV</p>
+                <div className="flex items-center space-x-4">
+                  {[
+                    { value: 'left', label: 'Left', icon: '←' },
+                    { value: 'center', label: 'Center', icon: '↔' },
+                    { value: 'right', label: 'Right', icon: '→' }
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                        (cv?.cv_data.personal_info?.text_alignment || 'center') === option.value
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="text_alignment"
+                        value={option.value}
+                        checked={(cv?.cv_data.personal_info?.text_alignment || 'center') === option.value}
+                        onChange={(e) => updatePersonalInfoAlignment(e.target.value as 'left' | 'center' | 'right')}
+                        className="sr-only"
+                      />
+                      <span className="text-lg">{option.icon}</span>
+                      <span className="font-medium">{option.label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
               <div>
@@ -1199,37 +1284,297 @@ export default function CVEditor() {
           </Card>
         );
 
+      case 'formatting':
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Layout className="w-5 h-5" />
+                <span>Formatting & Style</span>
+              </CardTitle>
+              <p className="text-slate-600">Customize the appearance and layout of your CV</p>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              {/* Header Text Alignment */}
+              <div>
+                <Label className="text-base font-semibold">Header Text Alignment</Label>
+                <p className="text-sm text-slate-600 mb-4">Choose how your name and contact info are aligned</p>
+                <div className="flex items-center space-x-4">
+                  {[
+                    { value: 'left', label: 'Left Aligned', icon: '←' },
+                    { value: 'center', label: 'Centered', icon: '↔' },
+                    { value: 'right', label: 'Right Aligned', icon: '→' }
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                        (cv?.cv_data.personal_info?.text_alignment || 'center') === option.value
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="text_alignment"
+                        value={option.value}
+                        checked={(cv?.cv_data.personal_info?.text_alignment || 'center') === option.value}
+                        onChange={(e) => updatePersonalInfoAlignment(e.target.value as 'left' | 'center' | 'right')}
+                        className="sr-only"
+                      />
+                      <span className="text-lg">{option.icon}</span>
+                      <span className="font-medium">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Professional Links Section */}
+              <div>
+                <Label className="text-base font-semibold">Professional Links</Label>
+                <p className="text-sm text-slate-600 mb-4">Add your professional online presence</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="github">GitHub Profile</Label>
+                    <div className="relative mt-1">
+                      <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <Input
+                        id="github"
+                        value={cv?.cv_data.personal_info?.github || ''}
+                        onChange={(e) => updatePersonalInfo('github', e.target.value)}
+                        placeholder="github.com/johndoe"
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="portfolio_link">Portfolio Website</Label>
+                    <div className="relative mt-1">
+                      <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <Input
+                        id="portfolio_link"
+                        value={cv?.cv_data.personal_info?.portfolio || ''}
+                        onChange={(e) => updatePersonalInfo('portfolio', e.target.value)}
+                        placeholder="yourwebsite.com"
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Font Family */}
+              <div>
+                <Label className="text-base font-semibold">Font Family</Label>
+                <p className="text-sm text-slate-600 mb-4">Choose a professional font for your CV</p>
+                <select
+                  value={cv?.cv_data.formatting?.font_family || 'Inter'}
+                  onChange={(e) => updateFormatting('font_family', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Inter">Inter (Modern, Clean)</option>
+                  <option value="Arial">Arial (Classic, Professional)</option>
+                  <option value="Times New Roman">Times New Roman (Traditional)</option>
+                  <option value="Helvetica">Helvetica (Minimalist)</option>
+                  <option value="Georgia">Georgia (Elegant, Readable)</option>
+                </select>
+              </div>
+
+              {/* Font Size */}
+              <div>
+                <Label className="text-base font-semibold">Font Size</Label>
+                <p className="text-sm text-slate-600 mb-4">Adjust the overall text size</p>
+                <div className="flex items-center space-x-4">
+                  {[
+                    { value: 'small', label: 'Small (14px)', desc: 'Compact, fits more content' },
+                    { value: 'medium', label: 'Medium (16px)', desc: 'Balanced, ATS-friendly' },
+                    { value: 'large', label: 'Large (18px)', desc: 'Easy to read, professional' }
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex-1 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                        (cv?.cv_data.formatting?.font_size || 'medium') === option.value
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="font_size"
+                        value={option.value}
+                        checked={(cv?.cv_data.formatting?.font_size || 'medium') === option.value}
+                        onChange={(e) => updateFormatting('font_size', e.target.value)}
+                        className="sr-only"
+                      />
+                      <div className="text-center">
+                        <div className="font-semibold text-slate-900">{option.label}</div>
+                        <div className="text-sm text-slate-600 mt-1">{option.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Divider Color */}
+              <div>
+                <Label className="text-base font-semibold">Section Divider Color</Label>
+                <p className="text-sm text-slate-600 mb-4">Choose the color for section dividers and lines</p>
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { color: '#e2e8f0', name: 'Light Gray', class: 'bg-slate-300' },
+                    { color: '#3b82f6', name: 'Blue', class: 'bg-blue-500' },
+                    { color: '#10b981', name: 'Green', class: 'bg-green-500' },
+                    { color: '#f59e0b', name: 'Orange', class: 'bg-orange-500' },
+                    { color: '#8b5cf6', name: 'Purple', class: 'bg-purple-500' },
+                    { color: '#ef4444', name: 'Red', class: 'bg-red-500' },
+                    { color: '#6b7280', name: 'Dark Gray', class: 'bg-gray-500' },
+                    { color: '#1f2937', name: 'Black', class: 'bg-gray-800' }
+                  ].map((option) => (
+                    <label
+                      key={option.color}
+                      className={`p-3 border-2 rounded-lg cursor-pointer transition-all text-center ${
+                        (cv?.cv_data.formatting?.divider_color || '#e2e8f0') === option.color
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="divider_color"
+                        value={option.color}
+                        checked={(cv?.cv_data.formatting?.divider_color || '#e2e8f0') === option.color}
+                        onChange={(e) => updateFormatting('divider_color', e.target.value)}
+                        className="sr-only"
+                      />
+                      <div className={`w-full h-4 rounded mb-2 ${option.class}`}></div>
+                      <div className="text-xs font-medium text-slate-700">{option.name}</div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Text Color */}
+              <div>
+                <Label className="text-base font-semibold">Text Color</Label>
+                <p className="text-sm text-slate-600 mb-4">Choose the main text color</p>
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { color: '#1e293b', name: 'Dark Gray (Recommended)', class: 'bg-slate-800' },
+                    { color: '#000000', name: 'Black', class: 'bg-black' },
+                    { color: '#374151', name: 'Medium Gray', class: 'bg-gray-700' }
+                  ].map((option) => (
+                    <label
+                      key={option.color}
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all text-center ${
+                        (cv?.cv_data.formatting?.text_color || '#1e293b') === option.color
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="text_color"
+                        value={option.color}
+                        checked={(cv?.cv_data.formatting?.text_color || '#1e293b') === option.color}
+                        onChange={(e) => updateFormatting('text_color', e.target.value)}
+                        className="sr-only"
+                      />
+                      <div className={`w-full h-6 rounded mb-2 ${option.class}`}></div>
+                      <div className="text-sm font-medium text-slate-700">{option.name}</div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+
       default:
         return null;
     }
   };
 
   // Live Preview Component
-  const LivePreview = () => (
-    <div className="bg-white rounded-lg shadow-lg border h-full overflow-y-auto">
-      <div className="p-8 max-w-4xl mx-auto">
-        {/* Personal Info */}
-        {cv?.cv_data.personal_info && (
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              {cv.cv_data.personal_info.full_name || 'Your Name'}
-            </h1>
-            <div className="flex flex-wrap gap-4 text-slate-600 mb-4">
-              {cv.cv_data.personal_info.email && (
-                <span>{cv.cv_data.personal_info.email}</span>
+  const LivePreview = () => {
+    const personalInfo = cv?.cv_data.personal_info || {};
+    const formatting = cv?.cv_data.formatting || {};
+    const textAlignment = personalInfo.text_alignment || 'center';
+    const fontFamily = formatting.font_family || 'Inter';
+    const fontSize = formatting.font_size || 'medium';
+    const dividerColor = formatting.divider_color || '#e2e8f0';
+    const textColor = formatting.text_color || '#1e293b';
+
+    // Font size mapping
+    const fontSizeMap = {
+      small: { base: '14px', name: '24px', section: '16px' },
+      medium: { base: '16px', name: '28px', section: '18px' },
+      large: { base: '18px', name: '32px', section: '20px' }
+    };
+
+    const currentFontSize = fontSizeMap[fontSize as keyof typeof fontSizeMap] || fontSizeMap.medium;
+
+    return (
+      <div 
+        className="bg-white rounded-lg shadow-lg border h-full overflow-y-auto"
+        style={{ 
+          fontFamily: fontFamily,
+          fontSize: currentFontSize.base,
+          color: textColor
+        }}
+      >
+        <div className="p-8 max-w-4xl mx-auto">
+          {/* Personal Info */}
+          {personalInfo && (
+            <div className={`mb-8 ${textAlignment === 'left' ? 'text-left' : textAlignment === 'right' ? 'text-right' : 'text-center'}`}>
+              <h1 
+                className="font-bold mb-3"
+                style={{ fontSize: currentFontSize.name }}
+              >
+                {personalInfo.full_name || 'Your Name'}
+              </h1>
+              
+              {/* Contact Information */}
+              <div className={`flex flex-wrap gap-x-6 gap-y-2 text-sm ${textAlignment === 'center' ? 'justify-center' : textAlignment === 'right' ? 'justify-end' : 'justify-start'}`}>
+                {personalInfo.email && (
+                  <span>{personalInfo.email}</span>
+                )}
+                {personalInfo.phone && (
+                  <span>{personalInfo.phone}</span>
+                )}
+                {personalInfo.location && (
+                  <span>{personalInfo.location}</span>
+                )}
+              </div>
+              
+              {/* Professional Links */}
+              {(personalInfo.linkedin || personalInfo.portfolio || personalInfo.github) && (
+                <div className={`flex flex-wrap gap-x-6 gap-y-2 text-sm mt-2 ${textAlignment === 'center' ? 'justify-center' : textAlignment === 'right' ? 'justify-end' : 'justify-start'}`}>
+                  {personalInfo.linkedin && (
+                    <a href={personalInfo.linkedin} className="text-blue-600 hover:underline">
+                      LinkedIn: {personalInfo.linkedin.replace('https://linkedin.com/in/', '').replace('linkedin.com/in/', '')}
+                    </a>
+                  )}
+                  {personalInfo.github && (
+                    <a href={personalInfo.github} className="text-blue-600 hover:underline">
+                      GitHub: {personalInfo.github.replace('https://github.com/', '').replace('github.com/', '')}
+                    </a>
+                  )}
+                  {personalInfo.portfolio && (
+                    <a href={personalInfo.portfolio} className="text-blue-600 hover:underline">
+                      Portfolio: {personalInfo.portfolio}
+                    </a>
+                  )}
+                </div>
               )}
-              {cv.cv_data.personal_info.phone && (
-                <span>{cv.cv_data.personal_info.phone}</span>
-              )}
-              {cv.cv_data.personal_info.location && (
-                <span>{cv.cv_data.personal_info.location}</span>
+              
+              {personalInfo.summary && (
+                <p className="mt-4 leading-relaxed">{personalInfo.summary}</p>
               )}
             </div>
-            {cv.cv_data.personal_info.summary && (
-              <p className="text-slate-700 leading-relaxed">{cv.cv_data.personal_info.summary}</p>
-            )}
-          </div>
-        )}
+          )}
+
+          {personalInfo.full_name && (
+            <hr className="mb-8" style={{ borderColor: dividerColor, borderWidth: '1px' }} />
+          )}
 
         {/* Render sections in order */}
         {sectionOrder.map((sectionId) => {
@@ -1241,7 +1586,13 @@ export default function CVEditor() {
               if (!cv?.cv_data.experience?.length) return null;
               return (
                 <div key={sectionId} className="mb-8">
-                  <h2 className="text-xl font-bold text-slate-900 mb-4 border-b-2 border-blue-600 pb-2">
+                  <h2 
+                    className="font-bold mb-4 pb-2"
+                    style={{ 
+                      fontSize: currentFontSize.section, 
+                      borderBottom: `2px solid ${dividerColor}` 
+                    }}
+                  >
                     Work Experience
                   </h2>
                   {cv.cv_data.experience.map((exp, index) => (
@@ -1268,7 +1619,13 @@ export default function CVEditor() {
               if (!cv?.cv_data.education?.length) return null;
               return (
                 <div key={sectionId} className="mb-8">
-                  <h2 className="text-xl font-bold text-slate-900 mb-4 border-b-2 border-blue-600 pb-2">
+                  <h2 
+                    className="font-bold mb-4 pb-2"
+                    style={{ 
+                      fontSize: currentFontSize.section, 
+                      borderBottom: `2px solid ${dividerColor}` 
+                    }}
+                  >
                     Education
                   </h2>
                   {cv.cv_data.education.map((edu, index) => (
@@ -1297,7 +1654,13 @@ export default function CVEditor() {
               if (!cv?.cv_data.skills?.length) return null;
               return (
                 <div key={sectionId} className="mb-8">
-                  <h2 className="text-xl font-bold text-slate-900 mb-4 border-b-2 border-blue-600 pb-2">
+                  <h2 
+                    className="font-bold mb-4 pb-2"
+                    style={{ 
+                      fontSize: currentFontSize.section, 
+                      borderBottom: `2px solid ${dividerColor}` 
+                    }}
+                  >
                     Skills
                   </h2>
                   {cv.cv_data.skills.map((skillCategory, index) => (
@@ -1313,7 +1676,13 @@ export default function CVEditor() {
               if (!cv?.cv_data.problem_solving?.length) return null;
               return (
                 <div key={sectionId} className="mb-8">
-                  <h2 className="text-xl font-bold text-slate-900 mb-4 border-b-2 border-blue-600 pb-2">
+                  <h2 
+                    className="font-bold mb-4 pb-2"
+                    style={{ 
+                      fontSize: currentFontSize.section, 
+                      borderBottom: `2px solid ${dividerColor}` 
+                    }}
+                  >
                     Problem Solving
                   </h2>
                   {cv.cv_data.problem_solving.map((problem, index) => (
@@ -1350,9 +1719,10 @@ export default function CVEditor() {
               return null;
           }
         })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -1368,7 +1738,7 @@ export default function CVEditor() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">{cv.cv_name}</h1>
+                <h1 className="text-2xl font-bold text-slate-900">{cv?.cv_name || 'CV Editor'}</h1>
                 <p className="text-slate-600">Professional CV Editor</p>
               </div>
             </div>
