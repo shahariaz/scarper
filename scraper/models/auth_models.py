@@ -840,3 +840,163 @@ class AuthService:
         
         finally:
             conn.close()
+
+    def search_users(self, filters: Dict[str, Any], page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        """Search for users with filters and pagination"""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Build WHERE clause for filters
+            where_conditions = ["u.is_active = 1"]  # Only show active users
+            params = []
+            
+            # Text search in name, email, bio, company name
+            if 'query' in filters and filters['query']:
+                search_query = f"%{filters['query']}%"
+                where_conditions.append("""
+                    (u.email LIKE ? OR 
+                     up.first_name LIKE ? OR 
+                     up.last_name LIKE ? OR 
+                     up.bio LIKE ? OR
+                     cp.company_name LIKE ? OR
+                     jp.skills LIKE ? OR
+                     jp.current_position LIKE ?)
+                """)
+                params.extend([search_query] * 7)
+            
+            # Filter by user type
+            if 'user_type' in filters and filters['user_type']:
+                where_conditions.append("u.user_type = ?")
+                params.append(filters['user_type'])
+            
+            # Filter by location
+            if 'location' in filters and filters['location']:
+                location_query = f"%{filters['location']}%"
+                where_conditions.append("(cp.location LIKE ? OR jp.location LIKE ?)")
+                params.extend([location_query, location_query])
+            
+            # Filter by industry
+            if 'industry' in filters and filters['industry']:
+                industry_query = f"%{filters['industry']}%"
+                where_conditions.append("cp.industry LIKE ?")
+                params.append(industry_query)
+            
+            # Filter by experience level
+            if 'experience_level' in filters and filters['experience_level']:
+                where_conditions.append("jp.experience_level = ?")
+                params.append(filters['experience_level'])
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Get total count for pagination
+            count_query = f"""
+                SELECT COUNT(DISTINCT u.id)
+                FROM users u
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                LEFT JOIN company_profiles cp ON u.id = cp.user_id
+                LEFT JOIN jobseeker_profiles jp ON u.id = jp.user_id
+                WHERE {where_clause}
+            """
+            cursor.execute(count_query, params)
+            total_users = cursor.fetchone()[0]
+            
+            # Calculate pagination
+            total_pages = (total_users + per_page - 1) // per_page
+            offset = (page - 1) * per_page
+            
+            # Get paginated users with their profile info
+            users_query = f"""
+                SELECT DISTINCT
+                    u.id,
+                    u.email,
+                    u.user_type,
+                    u.created_at,
+                    up.first_name,
+                    up.last_name,
+                    up.avatar_url,
+                    up.bio,
+                    cp.company_name,
+                    cp.industry,
+                    cp.location as company_location,
+                    cp.logo_url,
+                    cp.is_approved,
+                    jp.experience_level,
+                    jp.current_position,
+                    jp.location as jobseeker_location,
+                    jp.skills,
+                    jp.available_for_work
+                FROM users u
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                LEFT JOIN company_profiles cp ON u.id = cp.user_id
+                LEFT JOIN jobseeker_profiles jp ON u.id = jp.user_id
+                WHERE {where_clause}
+                ORDER BY u.created_at DESC
+                LIMIT ? OFFSET ?
+            """
+            
+            cursor.execute(users_query, params + [per_page, offset])
+            
+            users = []
+            for row in cursor.fetchall():
+                # Basic user info
+                user = {
+                    'id': row[0],
+                    'email': row[1],
+                    'user_type': row[2],
+                    'created_at': row[3],
+                    'first_name': row[4] or '',
+                    'last_name': row[5] or '',
+                    'avatar_url': row[6],
+                    'bio': row[7] or '',
+                    'display_name': f"{row[4] or ''} {row[5] or ''}".strip() or row[1]
+                }
+                
+                # Add type-specific info
+                if row[2] == 'company':
+                    user.update({
+                        'company_name': row[8] or '',
+                        'industry': row[9] or '',
+                        'location': row[10] or '',
+                        'logo_url': row[11],
+                        'is_approved': bool(row[12]) if row[12] is not None else False
+                    })
+                elif row[2] == 'jobseeker':
+                    user.update({
+                        'experience_level': row[13] or '',
+                        'current_position': row[14] or '',
+                        'location': row[15] or '',
+                        'skills': row[16] or '',
+                        'available_for_work': bool(row[17]) if row[17] is not None else True
+                    })
+                
+                users.append(user)
+            
+            return {
+                'users': users,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total_users,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error searching users: {e}")
+            return {
+                'users': [],
+                'pagination': {
+                    'page': 1,
+                    'per_page': per_page,
+                    'total': 0,
+                    'total_pages': 0,
+                    'has_next': False,
+                    'has_prev': False
+                }
+            }
+        
+        finally:
+            conn.close()

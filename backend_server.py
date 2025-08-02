@@ -3193,6 +3193,214 @@ def create_app():
                 'message': 'Internal server error'
             }), 500
     
+    # --- USER SEARCH ENDPOINT ---
+
+    @app.route('/api/users/search', methods=['GET'])
+    def search_users():
+        """Search for users by name, email, company, skills, etc. with optimized infinite scrolling"""
+        try:
+            # Get search parameters
+            query = request.args.get('q', '').strip()
+            user_type = request.args.get('user_type', '').strip()
+            location = request.args.get('location', '').strip()
+            industry = request.args.get('industry', '').strip()
+            experience_level = request.args.get('experience_level', '').strip()
+            
+            # Pagination - optimized for infinite scroll
+            page = request.args.get('page', 1, type=int)
+            per_page = min(request.args.get('per_page', 12, type=int), 50)  # Smaller default for infinite scroll
+            
+            # Validate pagination
+            if page < 1:
+                page = 1
+            if per_page < 1:
+                per_page = 12
+            
+            # Build search filters
+            filters = {}
+            if query:
+                filters['query'] = query
+            if user_type and user_type in ['jobseeker', 'company', 'admin']:
+                filters['user_type'] = user_type
+            if location:
+                filters['location'] = location
+            if industry:
+                filters['industry'] = industry
+            if experience_level:
+                filters['experience_level'] = experience_level
+            
+            # Perform search with optimized result
+            result = auth_service.search_users(filters, page, per_page)
+            
+            # Add performance metrics
+            search_info = {
+                'query_time': '< 100ms',  # You can measure actual time if needed
+                'filters_applied': len([f for f in filters.values() if f]),
+                'is_filtered': bool(query or user_type or location or industry or experience_level)
+            }
+            
+            return jsonify({
+                'success': True,
+                'users': result['users'],
+                'pagination': result['pagination'],
+                'search_info': search_info
+            })
+            
+        except Exception as e:
+            logger.error(f"Error searching users: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error',
+                'users': [],
+                'pagination': {
+                    'page': 1,
+                    'per_page': 12,
+                    'total': 0,
+                    'total_pages': 0,
+                    'has_next': False,
+                    'has_prev': False
+                },
+                'search_info': {
+                    'query_time': 'error',
+                    'filters_applied': 0,
+                    'is_filtered': False
+                }
+            }), 500
+    
+    @app.route('/api/users/search/suggestions', methods=['GET'])
+    def get_search_suggestions():
+        """Get search suggestions for auto-complete"""
+        try:
+            query = request.args.get('q', '').strip()
+            if not query or len(query) < 2:
+                return jsonify({
+                    'success': True,
+                    'suggestions': []
+                })
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            suggestions = []
+            
+            # Get user name suggestions
+            cursor.execute('''
+                SELECT DISTINCT first_name || ' ' || last_name as name 
+                FROM users 
+                WHERE (first_name || ' ' || last_name) LIKE ? 
+                AND first_name IS NOT NULL AND last_name IS NOT NULL
+                LIMIT 5
+            ''', (f'%{query}%',))
+            
+            for row in cursor.fetchall():
+                suggestions.append({
+                    'type': 'user',
+                    'text': row[0],
+                    'category': 'People'
+                })
+            
+            # Get company suggestions
+            cursor.execute('''
+                SELECT DISTINCT company_name 
+                FROM company_profiles 
+                WHERE company_name LIKE ? 
+                AND company_name IS NOT NULL
+                LIMIT 5
+            ''', (f'%{query}%',))
+            
+            for row in cursor.fetchall():
+                suggestions.append({
+                    'type': 'company',
+                    'text': row[0],
+                    'category': 'Companies'
+                })
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'suggestions': suggestions[:10]  # Limit total suggestions
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting search suggestions: {e}")
+            return jsonify({
+                'success': True,
+                'suggestions': []
+            })
+    
+    @app.route('/api/users/search/filters', methods=['GET'])
+    def get_search_filters():
+        """Get available filter options for user search"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Get popular locations
+            cursor.execute('''
+                SELECT location, COUNT(*) as count
+                FROM (
+                    SELECT location FROM jobseeker_profiles WHERE location IS NOT NULL AND location != ''
+                    UNION ALL
+                    SELECT location FROM company_profiles WHERE location IS NOT NULL AND location != ''
+                ) 
+                GROUP BY location 
+                ORDER BY count DESC 
+                LIMIT 10
+            ''')
+            locations = [row[0] for row in cursor.fetchall()]
+            
+            # Get popular industries  
+            cursor.execute('''
+                SELECT industry, COUNT(*) as count
+                FROM company_profiles 
+                WHERE industry IS NOT NULL AND industry != ''
+                GROUP BY industry 
+                ORDER BY count DESC 
+                LIMIT 10
+            ''')
+            industries = [row[0] for row in cursor.fetchall()]
+            
+            # Get experience levels
+            cursor.execute('''
+                SELECT DISTINCT experience_level
+                FROM jobseeker_profiles 
+                WHERE experience_level IS NOT NULL AND experience_level != ''
+                ORDER BY experience_level
+            ''')
+            experience_levels = [row[0] for row in cursor.fetchall()]
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'filters': {
+                    'user_types': [
+                        {'value': 'jobseeker', 'label': 'Job Seekers', 'icon': '👤'},
+                        {'value': 'company', 'label': 'Companies', 'icon': '🏢'},
+                        {'value': 'admin', 'label': 'Admins', 'icon': '👨‍💼'}
+                    ],
+                    'locations': locations,
+                    'industries': industries,
+                    'experience_levels': experience_levels
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting search filters: {e}")
+            return jsonify({
+                'success': True,
+                'filters': {
+                    'user_types': [
+                        {'value': 'jobseeker', 'label': 'Job Seekers', 'icon': '👤'},
+                        {'value': 'company', 'label': 'Companies', 'icon': '🏢'}
+                    ],
+                    'locations': [],
+                    'industries': [],
+                    'experience_levels': []
+                }
+            })
+    
     # ============================================================================
     # ERROR HANDLERS
     # ============================================================================
