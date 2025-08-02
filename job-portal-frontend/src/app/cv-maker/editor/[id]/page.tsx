@@ -1096,6 +1096,109 @@ export default function CVEditor() {
           </Card>
         );
 
+      case 'problem_solving':
+        return (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Code className="w-5 h-5" />
+                    <span>Problem Solving</span>
+                  </CardTitle>
+                  <p className="text-slate-600">Showcase your coding challenges and algorithmic problem-solving skills</p>
+                </div>
+                <Button onClick={addProblemSolving} className="bg-blue-600 hover:bg-blue-700">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Problem
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {cv?.cv_data.problem_solving?.map((problem, index) => (
+                <div key={problem.id || index} className="border border-slate-200 rounded-lg p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-slate-900">Problem {index + 1}</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeProblemSolving(index)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Problem Title *</Label>
+                      <Input
+                        value={problem.title}
+                        onChange={(e) => updateProblemSolving(index, 'title', e.target.value)}
+                        placeholder="Two Sum, Binary Tree Traversal, etc."
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Difficulty</Label>
+                      <select
+                        value={problem.difficulty}
+                        onChange={(e) => updateProblemSolving(index, 'difficulty', e.target.value)}
+                        className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="Easy">Easy</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Hard">Hard</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Platform (Optional)</Label>
+                      <Input
+                        value={problem.platform || ''}
+                        onChange={(e) => updateProblemSolving(index, 'platform', e.target.value)}
+                        placeholder="LeetCode, HackerRank, Codeforces, etc."
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Problem URL (Optional)</Label>
+                      <Input
+                        value={problem.url || ''}
+                        onChange={(e) => updateProblemSolving(index, 'url', e.target.value)}
+                        placeholder="https://leetcode.com/problems/two-sum/"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Solution Description *</Label>
+                    <Textarea
+                      value={problem.description}
+                      onChange={(e) => updateProblemSolving(index, 'description', e.target.value)}
+                      placeholder="• Implemented optimal O(n) solution using hash table approach&#10;• Reduced time complexity from O(n²) to O(n) by trading space for time&#10;• Handled edge cases including duplicate elements and empty arrays"
+                      rows={4}
+                      className="mt-1"
+                    />
+                    <p className="text-sm text-slate-500 mt-1">
+                      Describe your approach, complexity analysis, and key insights
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {(!cv?.cv_data.problem_solving || cv.cv_data.problem_solving.length === 0) && (
+                <div className="text-center py-12 border-2 border-dashed border-slate-300 rounded-lg">
+                  <Code className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">No problem-solving entries added</h3>
+                  <p className="text-slate-600 mb-4">Showcase your algorithmic thinking and coding skills</p>
+                  <Button onClick={addProblemSolving} className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Your First Problem
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+
       default:
         return null;
     }
@@ -1230,9 +1333,13 @@ export default function CVEditor() {
                           )}
                         </div>
                       </div>
-                      <p className="text-slate-600 text-sm mb-2">
-                        Technologies: {problem.technologies.join(', ')}
-                      </p>
+                      {problem.platform && problem.url && (
+                        <p className="text-slate-600 text-sm mb-2">
+                          <a href={problem.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            View on {problem.platform}
+                          </a>
+                        </p>
+                      )}
                       <div className="text-slate-700 whitespace-pre-line">{problem.description}</div>
                     </div>
                   ))}
