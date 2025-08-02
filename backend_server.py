@@ -3225,6 +3225,215 @@ def create_app():
                 'message': f'Internal server error: {str(e)}'
             }), 500
 
+    # === HOME FEED API ENDPOINTS ===
+    
+    @app.route('/api/home/feed', methods=['GET'])
+    def get_home_feed():
+        """
+        Unified home feed API that combines jobs, blogs, user activities, and trending content
+        """
+        try:
+            # Get pagination and filter parameters
+            page = int(request.args.get('page', 1))
+            per_page = min(int(request.args.get('per_page', 20)), 50)
+            category = request.args.get('category', 'all')
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Calculate offset
+            offset = (page - 1) * per_page
+            content_items = []
+            
+            # 1. FETCH JOBS (if category allows)
+            if category in ['all', 'jobs']:
+                job_limit = per_page if category == 'jobs' else 8  # Reduce to make room for blogs
+                
+                cursor.execute('''
+                    SELECT j.id, j.title, j.description, j.location, j.salary_range, 
+                           j.type, j.experience_level, j.scraped_at, j.company,
+                           j.apply_link, j.view_count
+                    FROM jobs j
+                    WHERE j.is_active = 1
+                    ORDER BY j.scraped_at DESC
+                    LIMIT ?
+                ''', (job_limit,))
+                
+                jobs = cursor.fetchall()
+                
+                for job in jobs:
+                    content_items.append({
+                        'id': f"job_{job[0]}",
+                        'type': 'job',
+                        'data': {
+                            'id': job[0],
+                            'title': job[1],
+                            'description': job[2][:300] + '...' if len(job[2]) > 300 else job[2],
+                            'company': job[8] or 'Company',
+                            'location': job[3],
+                            'salary_range': job[4],
+                            'job_type': job[5],
+                            'experience_level': job[6],
+                            'apply_link': job[9],
+                            'created_at': job[7],
+                        },
+                        'created_at': job[7],
+                        'engagement': {
+                            'likes': 0,
+                            'comments': 0,
+                            'shares': 0,
+                            'views': job[10] or 0
+                        },
+                        'priority': 1.0
+                    })
+            
+            # 2. FETCH BLOGS (if category allows)
+            if category in ['all', 'blogs']:
+                blog_limit = per_page if category == 'blogs' else 7  # Reduce to make room for jobs
+                
+                cursor.execute('''
+                    SELECT b.id, b.title, b.content, b.excerpt, b.author_id, b.slug, 
+                           b.created_at, b.likes_count, b.views_count, b.tags,
+                           u.email, u.user_type,
+                           COALESCE(up.first_name, '') as first_name,
+                           COALESCE(up.last_name, '') as last_name,
+                           COALESCE(cp.company_name, '') as company_name
+                    FROM blogs b
+                    JOIN users u ON b.author_id = u.id
+                    LEFT JOIN user_profiles up ON u.id = up.user_id
+                    LEFT JOIN company_profiles cp ON u.id = cp.user_id
+                    WHERE b.is_published = 1
+                    ORDER BY b.created_at DESC
+                    LIMIT ?
+                ''', (blog_limit,))
+                
+                blogs = cursor.fetchall()
+                
+                for blog in blogs:
+                    # Determine author name
+                    author_name = blog[14] or blog[10]  # company_name or email
+                    if blog[12] and blog[13]:  # first_name and last_name
+                        author_name = f"{blog[12]} {blog[13]}"
+                    
+                    content_items.append({
+                        'id': f"blog_{blog[0]}",
+                        'type': 'blog',
+                        'data': {
+                            'id': blog[0],
+                            'title': blog[1],
+                            'content': blog[2][:300] + '...' if len(blog[2]) > 300 else blog[2],
+                            'excerpt': blog[3],
+                            'author_id': blog[4],
+                            'author_name': author_name,
+                            'author_type': blog[11],
+                            'slug': blog[5],
+                            'created_at': blog[6],
+                            'tags': json.loads(blog[9]) if blog[9] else []
+                        },
+                        'created_at': blog[6],
+                        'engagement': {
+                            'likes': blog[7] or 0,
+                            'comments': 0,
+                            'shares': 0,
+                            'views': blog[8] or 0
+                        },
+                        'priority': 0.8
+                    })
+            
+            conn.close()
+            
+            # Sort by creation time (newest first)
+            content_items.sort(key=lambda x: x['created_at'], reverse=True)
+            
+            # Apply pagination
+            start_idx = offset
+            end_idx = offset + per_page
+            paginated_content = content_items[start_idx:end_idx]
+            
+            # Calculate pagination info
+            total_count = len(content_items)
+            total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
+            
+            return jsonify({
+                'success': True,
+                'content': paginated_content,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total_count': total_count,
+                    'total_pages': total_pages,
+                    'has_next': page < total_pages,
+                    'has_prev': page > 1
+                },
+                'meta': {
+                    'category': category,
+                    'algorithm_version': '1.0'
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error fetching home feed: {e}")
+            return jsonify({
+                'success': False,
+                'message': f'Internal server error: {str(e)}',
+                'content': [],
+                'pagination': {}
+            }), 500
+
+    @app.route('/api/home/stats', methods=['GET'])
+    def get_home_stats():
+        """Get overall platform statistics for home page widgets"""
+        try:
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Get active jobs count
+            cursor.execute('SELECT COUNT(*) FROM jobs WHERE is_active = 1')
+            active_jobs = cursor.fetchone()[0]
+            
+            # Get new jobs this week
+            cursor.execute('''
+                SELECT COUNT(*) FROM jobs 
+                WHERE is_active = 1 AND created_at > datetime('now', '-7 days')
+            ''')
+            new_jobs_week = cursor.fetchone()[0]
+            
+            # Get companies hiring
+            cursor.execute('''
+                SELECT COUNT(DISTINCT company_id) FROM jobs 
+                WHERE is_active = 1 AND created_at > datetime('now', '-30 days')
+            ''')
+            companies_hiring = cursor.fetchone()[0]
+            
+            # Get total registered users
+            cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
+            total_users = cursor.fetchone()[0]
+            
+            # Get total blog posts
+            cursor.execute('SELECT COUNT(*) FROM blogs WHERE is_published = 1')
+            total_blogs = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'stats': {
+                    'active_jobs': active_jobs,
+                    'new_jobs_week': new_jobs_week,
+                    'companies_hiring': companies_hiring,
+                    'total_users': total_users,
+                    'total_blogs': total_blogs,
+                    'last_updated': datetime.now().isoformat()
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error fetching home stats: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch statistics'
+            }), 500
+
     @app.route('/api/users/<int:user_id>/activity-feed', methods=['GET'])
     def get_user_activity_feed(user_id):
         """Get user's activity feed (for followers)"""

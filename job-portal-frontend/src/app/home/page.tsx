@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
-import { RootState } from '../store/store'
+import { RootState } from '../../store/store'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Card } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Badge } from '../components/ui/badge'
-import { Skeleton } from '../components/ui/skeleton'
+import { Card } from '../../components/ui/card'
+import { Button } from '../../components/ui/button'
+import { Badge } from '../../components/ui/badge'
+import { Skeleton } from '../../components/ui/skeleton'
 import { 
   Briefcase, 
   Users, 
@@ -21,12 +21,14 @@ import {
   MessageSquare,
   Heart,
   ChevronDown,
+  Building2,
   MapPin,
   Calendar,
   Eye,
   ArrowRight
 } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 // Types for different content types
 interface HomePageContent {
@@ -50,6 +52,7 @@ const CONTENT_CATEGORIES = [
   { id: 'blogs', label: 'Articles', icon: '📝' },
   { id: 'people', label: 'People', icon: '👥' },
   { id: 'companies', label: 'Companies', icon: '🏢' },
+  { id: 'trending', label: 'Trending', icon: '🔥' },
 ]
 
 // Quick actions for authenticated users
@@ -57,12 +60,13 @@ const QUICK_ACTIONS = [
   { id: 'post-job', label: 'Post Job', icon: Briefcase, href: '/post-job', color: 'blue' },
   { id: 'write-blog', label: 'Write Article', icon: FileText, href: '/blogs/create', color: 'green' },
   { id: 'find-people', label: 'Find People', icon: Users, href: '/users/search', color: 'purple' },
-  { id: 'market-insights', label: 'Market Insights', icon: TrendingUp, href: '/jobs', color: 'orange' },
+  { id: 'market-insights', label: 'Market Insights', icon: TrendingUp, href: '/insights', color: 'orange' },
 ]
 
-export default function HomePage() {
+export default function NewHomePage() {
   const { user, isAuthenticated } = useSelector((state: RootState) => state.auth)
   const [activeCategory, setActiveCategory] = useState('all')
+  const [showFilters, setShowFilters] = useState(false)
   const [personalizedFeed, setPersonalizedFeed] = useState(true)
 
   // Fetch unified content feed with infinite scroll
@@ -126,6 +130,10 @@ export default function HomePage() {
         return <BlogCard key={content.id} blog={content.data} engagement={content.engagement} />
       case 'user_activity':
         return <ActivityCard key={content.id} activity={content.data} />
+      case 'company_update':
+        return <CompanyUpdateCard key={content.id} update={content.data} />
+      case 'trending':
+        return <TrendingCard key={content.id} trending={content.data} />
       default:
         return null
     }
@@ -148,14 +156,12 @@ export default function HomePage() {
               </h1>
               <p className="text-xl md:text-2xl mb-8 text-blue-100 leading-relaxed">
                 Discover jobs, connect with professionals, share insights, and grow your career
-                in Bangladesh&apos;s thriving tech ecosystem
+                in Bangladesh's thriving tech ecosystem
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/jobs">
-                  <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-4 text-lg">
-                    Explore Jobs
-                  </Button>
-                </Link>
+                <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-8 py-4 text-lg">
+                  Explore Jobs
+                </Button>
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-blue-600 font-semibold px-8 py-4 text-lg">
                   Join Community
                 </Button>
@@ -183,9 +189,9 @@ export default function HomePage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-full h-auto p-3 flex flex-col items-center gap-2 hover:bg-blue-50 hover:border-blue-200 transition-all duration-200"
+                          className={`w-full h-auto p-3 flex flex-col items-center gap-2 hover:bg-${action.color}-50 hover:border-${action.color}-200 transition-all duration-200`}
                         >
-                          <action.icon className="w-5 h-5 text-blue-600" />
+                          <action.icon className={`w-5 h-5 text-${action.color}-600`} />
                           <span className="text-xs font-medium text-gray-700">{action.label}</span>
                         </Button>
                       </Link>
@@ -218,25 +224,23 @@ export default function HomePage() {
                 </div>
               </Card>
 
-              {/* Platform Stats */}
+              {/* Trending Topics */}
               <Card className="p-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-orange-600" />
-                  Platform Stats
+                  Trending Today
                 </h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Active Jobs</span>
-                    <span className="font-bold text-blue-600">2,847</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">New This Week</span>
-                    <span className="font-bold text-green-600">+156</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Companies Hiring</span>
-                    <span className="font-bold text-purple-600">423</span>
-                  </div>
+                <div className="space-y-3">
+                  {['React Developer', 'Remote Work', 'Fintech Jobs', 'UI/UX Design', 'Machine Learning'].map((trend, index) => (
+                    <div key={trend} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 hover:text-blue-600 cursor-pointer transition-colors">
+                        #{trend}
+                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        {Math.floor(Math.random() * 1000) + 100}
+                      </Badge>
+                    </div>
+                  ))}
                 </div>
               </Card>
             </div>
@@ -291,39 +295,61 @@ export default function HomePage() {
             </div>
           </main>
 
-          {/* Right Sidebar - Recommendations & Featured */}
+          {/* Right Sidebar - Recommendations & Stats */}
           <aside className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
+              {/* Job Market Stats */}
+              <Card className="p-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+                <h3 className="font-semibold text-gray-900 mb-4">Market Insights</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Active Jobs</span>
+                    <span className="font-bold text-blue-600">2,847</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">New This Week</span>
+                    <span className="font-bold text-green-600">+156</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Companies Hiring</span>
+                    <span className="font-bold text-purple-600">423</span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Recommended People */}
+              <Card className="p-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+                <h3 className="font-semibold text-gray-900 mb-4">People to Follow</h3>
+                <div className="space-y-4">
+                  {/* This would be populated from API */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        JD
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm text-gray-900">John Doe</p>
+                        <p className="text-xs text-gray-500">Senior Developer</p>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" className="text-xs">
+                      Follow
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
               {/* Featured Companies */}
               <Card className="p-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
                 <h3 className="font-semibold text-gray-900 mb-4">Featured Companies</h3>
                 <div className="space-y-3">
-                  {['TechCorp Solutions', 'InnovateIT', 'StartupXYZ'].map((company) => (
+                  {['TechCorp', 'InnovateIT', 'StartupXYZ'].map((company) => (
                     <div key={company} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                      <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                        {company.charAt(0)}
-                      </div>
+                      <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
                       <div>
                         <p className="font-medium text-sm">{company}</p>
                         <p className="text-xs text-gray-500">{Math.floor(Math.random() * 20) + 5} open positions</p>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* Trending Topics */}
-              <Card className="p-6 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-                <h3 className="font-semibold text-gray-900 mb-4">Trending Today</h3>
-                <div className="space-y-3">
-                  {['React Developer', 'Remote Work', 'Fintech Jobs', 'UI/UX Design', 'Machine Learning'].map((trend) => (
-                    <div key={trend} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600 hover:text-blue-600 cursor-pointer transition-colors">
-                        #{trend}
-                      </span>
-                      <Badge variant="secondary" className="text-xs">
-                        {Math.floor(Math.random() * 1000) + 100}
-                      </Badge>
                     </div>
                   ))}
                 </div>
@@ -407,7 +433,7 @@ function BlogCard({ blog, engagement }: { blog: any; engagement: any }) {
         {blog.title}
       </h3>
       
-      <p className="text-gray-700 mb-4 line-clamp-3">{blog.excerpt || blog.content}</p>
+      <p className="text-gray-700 mb-4 line-clamp-3">{blog.excerpt}</p>
       
       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
         <div className="flex items-center gap-6 text-sm text-gray-500">
@@ -424,33 +450,25 @@ function BlogCard({ blog, engagement }: { blog: any; engagement: any }) {
             {engagement.shares}
           </button>
         </div>
-        <Link href={`/blogs/${blog.slug || blog.id}`}>
-          <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700">
-            Read More
-          </Button>
-        </Link>
+        <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700">
+          Read More
+        </Button>
       </div>
     </Card>
   )
 }
 
-// Component for user activity cards
+// Other card components would be similar...
 function ActivityCard({ activity }: { activity: any }) {
-  return (
-    <Card className="p-4 bg-white/90 backdrop-blur-sm border-0 shadow-lg">
-      <div className="flex items-start gap-3">
-        <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-xs">
-          {activity.user_name?.charAt(0) || 'U'}
-        </div>
-        <div className="flex-1">
-          <p className="text-sm text-gray-900">
-            <span className="font-medium">{activity.user_name}</span> {activity.description}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">{new Date(activity.created_at).toLocaleDateString()}</p>
-        </div>
-      </div>
-    </Card>
-  )
+  return <div>Activity Card - {activity.type}</div>
+}
+
+function CompanyUpdateCard({ update }: { update: any }) {
+  return <div>Company Update Card</div>
+}
+
+function TrendingCard({ trending }: { trending: any }) {
+  return <div>Trending Card</div>
 }
 
 // Loading skeleton
