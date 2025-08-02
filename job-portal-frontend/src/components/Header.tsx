@@ -15,7 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
-import { User, Settings, LogOut, Building2, Briefcase, Shield, Menu, Home } from 'lucide-react'
+import { User, Settings, LogOut, Building2, Briefcase, Shield, Menu, Home, FileText } from 'lucide-react'
 import AuthModal from './AuthModal'
 
 export default function Header() {
@@ -99,6 +99,9 @@ export default function Header() {
                 </Link>
                 <Link href="/companies" className="px-3 py-2 rounded-lg text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-200 font-medium text-sm">
                   Companies
+                </Link>
+                <Link href="/cv-maker" className="px-3 py-2 rounded-lg text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-200 font-medium text-sm">
+                  CV Maker
                 </Link>
                 <Link href="/users/search" className="px-3 py-2 rounded-lg text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-200 font-medium text-sm">
                   People
@@ -270,6 +273,13 @@ export default function Header() {
                 <Link href="/companies" className="flex items-center px-4 py-3 text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 rounded-lg transition-all duration-200 font-medium">
                   <Building2 className="h-5 w-5 mr-3" />
                   Companies
+                </Link>
+                <Link href="/cv-maker" className="flex items-center px-4 py-3 text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 rounded-lg transition-all duration-200 font-medium">
+                  <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  CV Maker
+                  <span className="ml-auto text-xs bg-green-400/20 text-green-400 px-2 py-1 rounded-full">New</span>
                 </Link>
                 <Link href="/users/search" className="flex items-center px-4 py-3 text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 rounded-lg transition-all duration-200 font-medium">
                   <User className="h-5 w-5 mr-3" />

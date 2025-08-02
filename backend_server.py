@@ -20,6 +20,7 @@ from scraper.models.auth_models import AuthService
 from scraper.models.job_models import JobService
 from scraper.models.blog_models import BlogService
 from scraper.models.social_models import SocialService
+from scraper.models.cv_models import CVService
 from scraper.websocket_manager import init_websocket, get_websocket_manager
 from scraper.utils.logger import setup_logger
 
@@ -30,6 +31,7 @@ auth_service = AuthService()
 job_service = JobService()
 blog_service = BlogService()
 social_service = SocialService()
+cv_service = CVService()
 
 def create_app():
     """Create and configure the Flask application"""
@@ -3987,6 +3989,398 @@ def create_app():
             })
     
     # ============================================================================
+    # CV MAKER API ENDPOINTS
+    # ============================================================================
+    
+    @app.route('/api/cv/templates', methods=['GET'])
+    def get_cv_templates():
+        """Get available CV templates"""
+        try:
+            category = request.args.get('category')
+            is_premium = request.args.get('is_premium')
+            
+            # Convert is_premium to boolean if provided
+            if is_premium is not None:
+                is_premium = is_premium.lower() == 'true'
+            
+            templates = cv_service.get_cv_templates(category, is_premium)
+            
+            return jsonify({
+                'success': True,
+                'templates': templates
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting CV templates: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch CV templates'
+            }), 500
+    
+    @app.route('/api/cv/templates/<int:template_id>', methods=['GET'])
+    def get_cv_template(template_id):
+        """Get a specific CV template"""
+        try:
+            templates = cv_service.get_cv_templates()
+            template = next((t for t in templates if t['id'] == template_id), None)
+            
+            if not template:
+                return jsonify({
+                    'success': False,
+                    'message': 'Template not found'
+                }), 404
+            
+            return jsonify({
+                'success': True,
+                'template': template
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting CV template {template_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch CV template'
+            }), 500
+    
+    @app.route('/api/cv/my-cvs', methods=['GET'])
+    @token_required
+    def get_my_cvs():
+        """Get all CVs for the current user"""
+        try:
+            cvs = cv_service.get_user_cvs(request.current_user_id)
+            
+            return jsonify({
+                'success': True,
+                'cvs': cvs
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting user CVs: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch CVs'
+            }), 500
+    
+    @app.route('/api/cv/create', methods=['POST'])
+    @token_required
+    def create_cv():
+        """Create a new CV"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            # Validate required fields
+            required_fields = ['template_id', 'cv_name', 'cv_data']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({
+                        'success': False,
+                        'message': f'Missing required field: {field}'
+                    }), 400
+            
+            result = cv_service.create_user_cv(
+                request.current_user_id,
+                data['template_id'],
+                data['cv_name'],
+                data['cv_data']
+            )
+            
+            if result['success']:
+                return jsonify(result), 201
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error creating CV: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to create CV'
+            }), 500
+    
+    @app.route('/api/cv/<int:cv_id>', methods=['GET'])
+    @token_required
+    def get_cv(cv_id):
+        """Get a specific CV"""
+        try:
+            cv = cv_service.get_cv_by_id(cv_id, request.current_user_id)
+            
+            if not cv:
+                return jsonify({
+                    'success': False,
+                    'message': 'CV not found'
+                }), 404
+            
+            return jsonify({
+                'success': True,
+                'cv': cv
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting CV {cv_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch CV'
+            }), 500
+    
+    @app.route('/api/cv/<int:cv_id>', methods=['PUT']) 
+    @token_required
+    def update_cv(cv_id):
+        """Update a CV"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            result = cv_service.update_cv(cv_id, request.current_user_id, data)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error updating CV {cv_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to update CV'
+            }), 500
+    
+    @app.route('/api/cv/<int:cv_id>', methods=['DELETE'])
+    @token_required
+    def delete_cv(cv_id):
+        """Delete a CV"""
+        try:
+            result = cv_service.delete_cv(cv_id, request.current_user_id)
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error deleting CV {cv_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to delete CV'
+            }), 500
+    
+    @app.route('/api/cv/<int:cv_id>/share', methods=['POST'])
+    @token_required
+    def create_cv_share(cv_id):
+        """Create a shareable link for a CV"""
+        try:
+            data = request.get_json() or {}
+            password = data.get('password')
+            expires_days = data.get('expires_days')
+            
+            result = cv_service.create_cv_share(
+                cv_id, 
+                request.current_user_id, 
+                password, 
+                expires_days
+            )
+            
+            if result['success']:
+                return jsonify(result)
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error creating CV share for {cv_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to create share link'
+            }), 500
+    
+    @app.route('/api/cv/share/<share_token>', methods=['GET'])
+    def view_shared_cv(share_token):
+        """View a shared CV"""
+        try:
+            password = request.args.get('password')
+            
+            conn = sqlite3.connect('jobs.db')
+            cursor = conn.cursor()
+            
+            # Get share record
+            cursor.execute('''
+                SELECT cs.*, uc.cv_name, uc.cv_data, uc.user_id,
+                       ct.name as template_name, ct.template_data
+                FROM cv_shares cs
+                JOIN user_cvs uc ON cs.cv_id = uc.id
+                LEFT JOIN cv_templates ct ON uc.template_id = ct.id
+                WHERE cs.share_token = ?
+            ''', (share_token,))
+            
+            share_data = cursor.fetchone()
+            
+            if not share_data:
+                return jsonify({
+                    'success': False,
+                    'message': 'Share link not found or expired'
+                }), 404
+            
+            # Check if expired
+            if share_data[3]:  # expires_at
+                from datetime import datetime
+                expires_at = datetime.fromisoformat(share_data[3])
+                if datetime.utcnow() > expires_at:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Share link has expired'
+                    }), 410
+            
+            # Check password if required
+            if share_data[2]:  # password
+                if not password:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Password required',
+                        'password_required': True
+                    }), 401
+                
+                import hashlib
+                hashed_password = hashlib.sha256(password.encode()).hexdigest()
+                if hashed_password != share_data[2]:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid password'
+                    }), 401
+            
+            # Increment view count
+            cursor.execute('''
+                UPDATE cv_shares 
+                SET view_count = view_count + 1 
+                WHERE share_token = ?
+            ''', (share_token,))
+            conn.commit()
+            
+            # Return CV data
+            cv_data = {
+                'cv_name': share_data[5],
+                'cv_data': json.loads(share_data[6]) if share_data[6] else {},
+                'template': {
+                    'name': share_data[8],
+                    'template_data': json.loads(share_data[9]) if share_data[9] else {}
+                },
+                'view_count': share_data[4] + 1,
+                'shared_at': share_data[5]
+            }
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'cv': cv_data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error viewing shared CV {share_token}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to view shared CV'
+            }), 500
+    
+    @app.route('/api/cv/<int:cv_id>/export/<format>', methods=['POST'])
+    @token_required
+    def export_cv(cv_id, format):
+        """Export CV to different formats (PDF, DOCX, HTML)"""
+        try:
+            # Validate format
+            if format not in ['pdf', 'docx', 'html']:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid export format. Supported: pdf, docx, html'
+                }), 400
+            
+            # Get CV data
+            cv = cv_service.get_cv_by_id(cv_id, request.current_user_id)
+            
+            if not cv:
+                return jsonify({
+                    'success': False,
+                    'message': 'CV not found'
+                }), 404
+            
+            # For now, return a placeholder response
+            # TODO: Implement actual PDF/DOCX generation
+            return jsonify({
+                'success': False,
+                'message': f'{format.upper()} export not yet implemented. This feature will be added soon!'
+            }), 501
+            
+        except Exception as e:
+            logger.error(f"Error exporting CV {cv_id} to {format}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to export CV'
+            }), 500
+    
+    @app.route('/api/cv/statistics', methods=['GET'])
+    @token_required
+    def get_cv_statistics():
+        """Get CV statistics for the current user"""
+        try:
+            stats = cv_service.get_cv_statistics(request.current_user_id)
+            
+            return jsonify({
+                'success': True,
+                'statistics': stats
+            })
+            
+        except Exception as e:
+            logger.error(f"Error getting CV statistics: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch CV statistics'
+            }), 500
+    
+    @app.route('/api/cv/duplicate/<int:cv_id>', methods=['POST'])
+    @token_required
+    def duplicate_cv(cv_id):
+        """Duplicate an existing CV"""
+        try:
+            data = request.get_json() or {}
+            new_name = data.get('cv_name', f'Copy of CV {cv_id}')
+            
+            # Get original CV
+            original_cv = cv_service.get_cv_by_id(cv_id, request.current_user_id)
+            
+            if not original_cv:
+                return jsonify({
+                    'success': False,
+                    'message': 'Original CV not found'
+                }), 404
+            
+            # Create duplicate
+            result = cv_service.create_user_cv(
+                request.current_user_id,
+                original_cv['template_id'],
+                new_name,
+                original_cv['cv_data']
+            )
+            
+            if result['success']:
+                return jsonify(result), 201
+            else:
+                return jsonify(result), 400
+            
+        except Exception as e:
+            logger.error(f"Error duplicating CV {cv_id}: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to duplicate CV'
+            }), 500
+
+    # ============================================================================
     # ERROR HANDLERS
     # ============================================================================
     
@@ -4032,6 +4426,7 @@ if __name__ == '__main__':
         job_service.db.init_job_management_tables()
         blog_service.init_blog_tables()
         social_service.init_social_tables()
+        cv_service.init_cv_tables()
         logger.info("Database tables initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
