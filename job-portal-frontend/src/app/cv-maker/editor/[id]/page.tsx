@@ -24,8 +24,6 @@ import {
   MapPin,
   Link as LinkIcon,
   GripVertical,
-  ArrowUp,
-  ArrowDown,
   Layout,
   SplitSquareHorizontal,
   Edit3,
@@ -1512,16 +1510,32 @@ export default function CVEditor() {
 
     const currentFontSize = fontSizeMap[fontSize as keyof typeof fontSizeMap] || fontSizeMap.medium;
 
+    // A4 dimensions in pixels (at 96 DPI)
+    const isA4Mode = viewMode === 'split';
+    const a4Width = 794; // A4 width in pixels
+    const a4Height = 1123; // A4 height in pixels
+
     return (
-      <div 
-        className="bg-white rounded-lg shadow-lg border h-full overflow-y-auto"
-        style={{ 
-          fontFamily: fontFamily,
-          fontSize: currentFontSize.base,
-          color: textColor
-        }}
-      >
-        <div className="p-8 max-w-4xl mx-auto">
+      <div className={`flex justify-center ${isA4Mode ? 'overflow-auto' : ''}`}>
+        <div 
+          className={`bg-white shadow-lg border ${isA4Mode ? 'mx-4' : 'rounded-lg h-full'} overflow-y-auto`}
+          style={{ 
+            fontFamily: fontFamily,
+            fontSize: currentFontSize.base,
+            color: textColor,
+            ...(isA4Mode && {
+              width: `${a4Width}px`,
+              minHeight: `${a4Height}px`,
+              maxWidth: `${a4Width}px`,
+              aspectRatio: '210/297', // A4 aspect ratio
+              transform: 'scale(0.92)', // Much larger scale for excellent readability
+              transformOrigin: 'top center',
+              margin: '0 auto',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            })
+          }}
+        >
+          <div className={`${isA4Mode ? 'p-12' : 'p-8 max-w-4xl mx-auto'}`}>
           {/* Personal Info */}
           {personalInfo && (
             <div className={`mb-8 ${textAlignment === 'left' ? 'text-left' : textAlignment === 'right' ? 'text-right' : 'text-center'}`}>
@@ -1721,55 +1735,68 @@ export default function CVEditor() {
         })}
         </div>
       </div>
-    );
+    </div>
+  );
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b sticky top-0 z-50">
+      <div className="bg-white/80 backdrop-blur-md shadow-lg border-b border-white/20 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link href="/cv-maker">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" className="bg-white/50 hover:bg-white border-slate-300">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back
                 </Button>
               </Link>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">{cv?.cv_name || 'CV Editor'}</h1>
-                <p className="text-slate-600">Professional CV Editor</p>
+                <p className="text-slate-600">Professional CV Builder</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
               {/* View Mode Toggle */}
-              <div className="flex items-center bg-slate-100 rounded-lg p-1">
+              <div className="flex items-center bg-white/70 backdrop-blur rounded-xl p-1 shadow-md border border-white/30">
                 <Button
                   variant={viewMode === 'edit' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('edit')}
-                  className="px-3 py-1.5"
+                  className={`px-4 py-2 rounded-lg transition-all ${
+                    viewMode === 'edit' 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
                 >
-                  <Edit3 className="w-4 h-4 mr-1" />
+                  <Edit3 className="w-4 h-4 mr-2" />
                   Edit
                 </Button>
                 <Button
                   variant={viewMode === 'split' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('split')}
-                  className="px-3 py-1.5"
+                  className={`px-4 py-2 rounded-lg transition-all ${
+                    viewMode === 'split' 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
                 >
-                  <SplitSquareHorizontal className="w-4 h-4 mr-1" />
+                  <SplitSquareHorizontal className="w-4 h-4 mr-2" />
                   Split
                 </Button>
                 <Button
                   variant={viewMode === 'preview' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('preview')}
-                  className="px-3 py-1.5"
+                  className={`px-4 py-2 rounded-lg transition-all ${
+                    viewMode === 'preview' 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
                 >
-                  <Monitor className="w-4 h-4 mr-1" />
+                  <Monitor className="w-4 h-4 mr-2" />
                   Preview
                 </Button>
               </div>
@@ -1777,7 +1804,7 @@ export default function CVEditor() {
               <Button 
                 onClick={() => window.open(`/cv-maker/preview/${params.id}`, '_blank')}
                 variant="outline" 
-                className="flex items-center space-x-2"
+                className="bg-white/50 hover:bg-white border-slate-300 flex items-center space-x-2"
               >
                 <Eye className="w-4 h-4" />
                 <span>Open Preview</span>
@@ -1785,7 +1812,7 @@ export default function CVEditor() {
               <Button 
                 onClick={saveCV}
                 disabled={saving}
-                className="bg-blue-600 hover:bg-blue-700 flex items-center space-x-2"
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg px-6 flex items-center space-x-2"
               >
                 {saving ? (
                   <>
@@ -1795,7 +1822,7 @@ export default function CVEditor() {
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    <span>Save</span>
+                    <span>Save CV</span>
                   </>
                 )}
               </Button>
@@ -1886,46 +1913,136 @@ export default function CVEditor() {
             </div>
           </div>
         ) : viewMode === 'split' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-            {/* Editor Side */}
-            <div className="space-y-6">
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <h2 className="text-xl font-bold mb-4">Editing: {sections.find(s => s.id === activeSection)?.name}</h2>
-                {renderSectionContent(activeSection)}
+          <div className="flex gap-6 h-[calc(100vh-120px)]">
+            {/* Left Panel - Editor */}
+            <div className="w-2/5 flex flex-col space-y-4 overflow-hidden">
+              {/* Active Section Editor */}
+              <div className="flex-1 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-8 py-6 border-b border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      {(() => {
+                        const section = sections.find(s => s.id === activeSection);
+                        const IconComponent = section?.icon || User;
+                        return <IconComponent className="w-6 h-6 text-slate-700" />;
+                      })()}
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900">
+                          {sections.find(s => s.id === activeSection)?.name || 'Section'}
+                        </h2>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {activeSection === 'personal' ? 'Your contact information and summary' :
+                           activeSection === 'experience' ? 'Professional work history' :
+                           activeSection === 'education' ? 'Academic background' :
+                           activeSection === 'skills' ? 'Technical and professional skills' :
+                           activeSection === 'problem_solving' ? 'Coding challenges and solutions' :
+                           activeSection === 'projects' ? 'Notable projects and achievements' :
+                           activeSection === 'certifications' ? 'Professional certifications' :
+                           activeSection === 'formatting' ? 'Customize CV appearance' :
+                           'Section details'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-blue-100 text-blue-700 px-3 py-2 rounded-lg">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <span className="text-xs font-semibold">EDITING</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-8 overflow-y-auto max-h-[calc(100vh-320px)]">
+                  {renderSectionContent(activeSection)}
+                </div>
               </div>
               
-              {/* Quick Section Navigator */}
-              <div className="bg-white rounded-lg shadow-sm border p-4">
-                <h3 className="font-semibold mb-3">Quick Navigate</h3>
-                <div className="flex flex-wrap gap-2">
+              {/* Redesigned Quick Navigation */}
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Quick Navigate</h3>
+                    <p className="text-sm text-slate-500 mt-1">Switch between sections</p>
+                  </div>
+                  <div className="text-xs text-slate-400 font-medium">
+                    {sectionOrder.indexOf(activeSection) + 1} of {sectionOrder.length}
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-4 gap-2">
                   {sectionOrder.map((sectionId) => {
                     const section = sections.find(s => s.id === sectionId);
                     if (!section) return null;
                     const IconComponent = section.icon;
+                    const isActive = activeSection === sectionId;
                     return (
-                      <Button
+                      <button
                         key={sectionId}
-                        variant={activeSection === sectionId ? 'default' : 'outline'}
-                        size="sm"
                         onClick={() => setActiveSection(sectionId)}
-                        className="flex items-center space-x-2"
+                        className={`group relative p-3 rounded-xl transition-all duration-300 transform hover:scale-105 ${
+                          isActive
+                            ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-200'
+                            : 'bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200 hover:border-blue-300 hover:shadow-md'
+                        }`}
+                        title={section.name}
                       >
-                        <IconComponent className="w-4 h-4" />
-                        <span>{section.name}</span>
-                      </Button>
+                        <div className="flex flex-col items-center space-y-2">
+                          <div className={`p-2 rounded-lg ${
+                            isActive 
+                              ? 'bg-white/25' 
+                              : 'bg-white group-hover:bg-blue-100'
+                          }`}>
+                            <IconComponent className={`w-4 h-4 ${
+                              isActive 
+                                ? 'text-white' 
+                                : 'text-slate-600 group-hover:text-blue-600'
+                            }`} />
+                          </div>
+                          <div className={`text-xs font-medium text-center leading-tight ${
+                            isActive ? 'text-white' : 'text-slate-700 group-hover:text-blue-700'
+                          }`}>
+                            {section.name.split(' ')[0]}
+                          </div>
+                        </div>
+                        {isActive && (
+                          <div className="absolute -top-1 -right-1">
+                            <div className="w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
+                          </div>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
               </div>
             </div>
 
-            {/* Live Preview Side */}
-            <div className="h-screen sticky top-24">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Live Preview</h2>
-                <div className="text-sm text-slate-600">Updates in real-time</div>
+            {/* Right Panel - Live Preview */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 mb-4 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="p-3 bg-gradient-to-br from-green-100 to-emerald-100 rounded-xl">
+                      <Eye className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">Live Preview</h2>
+                      <p className="text-sm text-slate-600 mt-1">A4 format • Real-time updates</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2 bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 px-4 py-2 rounded-xl">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm font-semibold">LIVE</span>
+                    </div>
+                    <div className="text-xs text-slate-500 bg-slate-100 px-3 py-2 rounded-lg">
+                      210×297mm
+                    </div>
+                  </div>
+                </div>
               </div>
-              <LivePreview />
+              
+              <div className="flex-1 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl p-6 overflow-hidden">
+                <div className="h-full flex items-center justify-center">
+                  <LivePreview />
+                </div>
+              </div>
             </div>
           </div>
         ) : (

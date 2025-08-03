@@ -266,6 +266,47 @@ export default function CVMakerPage() {
     return template?.color || 'gray';
   };
 
+  const getSelectedTemplateClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'border-blue-500 bg-blue-50 shadow-md',
+      green: 'border-green-500 bg-green-50 shadow-md',
+      gray: 'border-gray-500 bg-gray-50 shadow-md',
+      purple: 'border-purple-500 bg-purple-50 shadow-md'
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.gray;
+  };
+
+  const getTemplateIconClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'p-2 rounded-lg bg-blue-100 text-blue-600 mr-3',
+      green: 'p-2 rounded-lg bg-green-100 text-green-600 mr-3',
+      gray: 'p-2 rounded-lg bg-gray-100 text-gray-600 mr-3',
+      purple: 'p-2 rounded-lg bg-purple-100 text-purple-600 mr-3'
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.gray;
+  };
+
+  const getSelectedIndicatorClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center',
+      green: 'w-5 h-5 rounded-full bg-green-500 flex items-center justify-center',
+      gray: 'w-5 h-5 rounded-full bg-gray-500 flex items-center justify-center',
+      purple: 'w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center'
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.gray;
+  };
+
+  const getBadgeClasses = (templateName: string) => {
+    const color = getTemplateColor(templateName);
+    const colorClasses = {
+      blue: 'border-blue-200 text-blue-700 bg-blue-50',
+      green: 'border-green-200 text-green-700 bg-green-50',
+      gray: 'border-gray-200 text-gray-700 bg-gray-50',
+      purple: 'border-purple-200 text-purple-700 bg-purple-50'
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.gray;
+  };
+
   const filteredCVs = cvs.filter(cv =>
     cv.cv_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cv.cv_data?.personal_info?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -273,24 +314,24 @@ export default function CVMakerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-6"></div>
-          <p className="text-slate-600 text-lg">Loading your professional CVs...</p>
+          <p className="text-gray-600 text-lg">Loading your professional CVs...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-4xl font-bold text-slate-900 mb-2">Professional CV Builder</h1>
-              <p className="text-slate-600 text-lg">Create stunning, ATS-friendly resumes that get you hired</p>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">Professional CV Builder</h1>
+              <p className="text-gray-600 text-lg">Create stunning, ATS-friendly resumes that get you hired</p>
             </div>
             <Button 
               onClick={() => setShowCreateForm(true)}
@@ -307,40 +348,40 @@ export default function CVMakerPage() {
         {/* Search */}
         <div className="mb-10">
           <div className="relative max-w-md">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <Input
               placeholder="Search your CVs..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-12 pr-4 py-3 bg-white border-slate-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="pl-12 pr-4 py-3 bg-white border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
         </div>
 
         {/* Create CV Form */}
         {showCreateForm && (
-          <Card className="mb-10 border-0 shadow-xl">
-            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
+          <Card className="mb-10 border-0 shadow-xl bg-white">
+            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg pt-8 pb-8">
               <CardTitle className="text-2xl font-bold">Create New Professional CV</CardTitle>
               <p className="text-blue-100">Choose a template and get started</p>
             </CardHeader>
-            <CardContent className="p-8">
+            <CardContent className="p-8 bg-white">
               <div className="space-y-8">
                 {/* CV Name Input */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-3">CV Name</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">CV Name</label>
                   <Input
                     placeholder="e.g., Software Engineer Resume, Marketing Manager CV..."
                     value={newCVName}
                     onChange={(e) => setNewCVName(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && createCV()}
-                    className="text-lg py-3 border-slate-300 focus:ring-2 focus:ring-blue-500"
+                    className="text-lg py-3 border-gray-300 focus:ring-2 focus:ring-blue-500 bg-white text-black"
                   />
                 </div>
 
                 {/* Template Selection */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-4">Choose Template</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-4">Choose Template</label>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {CV_TEMPLATES.map((template) => (
                       <div
@@ -348,24 +389,24 @@ export default function CVMakerPage() {
                         onClick={() => setSelectedTemplate(template.id)}
                         className={`relative p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 hover:shadow-lg ${
                           selectedTemplate === template.id
-                            ? `border-${template.color}-500 bg-${template.color}-50 shadow-md`
-                            : 'border-slate-200 hover:border-slate-300'
+                            ? getSelectedTemplateClasses(template.color)
+                            : 'border-gray-200 hover:border-gray-300 bg-white'
                         }`}
                       >
                         <div className="flex items-center mb-3">
-                          <div className={`p-2 rounded-lg bg-${template.color}-100 text-${template.color}-600 mr-3`}>
+                          <div className={getTemplateIconClasses(template.color)}>
                             {getTemplateIcon(template.id)}
                           </div>
                           <div className="flex-1">
-                            <h3 className="font-semibold text-slate-900">{template.name}</h3>
+                            <h3 className="font-semibold text-gray-900">{template.name}</h3>
                           </div>
                           {selectedTemplate === template.id && (
-                            <div className={`w-5 h-5 rounded-full bg-${template.color}-500 flex items-center justify-center`}>
+                            <div className={getSelectedIndicatorClasses(template.color)}>
                               <div className="w-2 h-2 bg-white rounded-full"></div>
                             </div>
                           )}
                         </div>
-                        <p className="text-sm text-slate-600">{template.description}</p>
+                        <p className="text-sm text-gray-600">{template.description}</p>
                       </div>
                     ))}
                   </div>
@@ -397,7 +438,7 @@ export default function CVMakerPage() {
                       setNewCVName('');
                       setSelectedTemplate('sb2nov');
                     }}
-                    className="px-8 py-3 border-slate-300 text-slate-700 hover:bg-slate-50"
+                    className="px-8 py-3 bg-red-500 hover:bg-red-600 border-red-500 hover:border-red-600 text-white font-medium transition-colors duration-200"
                   >
                     Cancel
                   </Button>
@@ -411,11 +452,13 @@ export default function CVMakerPage() {
         {filteredCVs.length === 0 ? (
           <div className="text-center py-20">
             <div className="max-w-md mx-auto">
-              <FileText className="w-24 h-24 text-slate-300 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-slate-900 mb-3">
+              <div className="bg-white rounded-full p-6 shadow-lg inline-block mb-6">
+                <FileText className="w-16 h-16 text-gray-400 mx-auto" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">
                 {cvs.length === 0 ? 'Ready to create your first CV?' : 'No CVs match your search'}
               </h3>
-              <p className="text-slate-600 text-lg mb-8">
+              <p className="text-gray-600 text-lg mb-8">
                 {cvs.length === 0 
                   ? 'Build a professional, ATS-friendly resume that stands out to employers'
                   : 'Try adjusting your search terms or create a new CV'
@@ -435,21 +478,21 @@ export default function CVMakerPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredCVs.map((cv) => (
-              <Card key={cv.id} className="group border-0 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden">
-                <CardHeader className="relative pb-4">
+              <Card key={cv.id} className="group border border-gray-200 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden bg-white">
+                <CardHeader className="relative pb-4 bg-white">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-xl font-bold text-slate-900 mb-2 group-hover:text-blue-600 transition-colors">
+                      <CardTitle className="text-xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
                         {cv.cv_name}
                       </CardTitle>
-                      <div className="flex items-center space-x-2 text-sm text-slate-600 mb-3">
+                      <div className="flex items-center space-x-2 text-sm text-gray-600 mb-3">
                         <User className="w-4 h-4" />
                         <span>{cv.cv_data?.personal_info?.full_name || 'Name not set'}</span>
                       </div>
                     </div>
                     <Badge 
                       variant="outline" 
-                      className={`border-${getTemplateColor(cv.template?.name || '')}-200 text-${getTemplateColor(cv.template?.name || '')}-700 bg-${getTemplateColor(cv.template?.name || '')}-50`}
+                      className={getBadgeClasses(cv.template?.name || '')}
                     >
                       {cv.template?.name || 'Professional'}
                     </Badge>
@@ -457,37 +500,43 @@ export default function CVMakerPage() {
                   
                   {/* Progress Indicators */}
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
+                    <div className="flex items-center justify-between text-xs text-gray-500">
                       <span>Completeness</span>
                       <span>75%</span>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
                       <div className="bg-green-500 h-2 rounded-full" style={{ width: '75%' }}></div>
                     </div>
                   </div>
                 </CardHeader>
                 
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 bg-white">
                   {/* Quick Stats */}
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div className="space-y-1">
-                      <Briefcase className="w-4 h-4 text-slate-400 mx-auto" />
-                      <div className="text-sm font-semibold text-slate-900">{cv.cv_data?.experience?.length || 0}</div>
-                      <div className="text-xs text-slate-500">Jobs</div>
+                      <div className="bg-gray-50 rounded-lg p-2">
+                        <Briefcase className="w-4 h-4 text-gray-500 mx-auto" />
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900">{cv.cv_data?.experience?.length || 0}</div>
+                      <div className="text-xs text-gray-500">Jobs</div>
                     </div>
                     <div className="space-y-1">
-                      <GraduationCap className="w-4 h-4 text-slate-400 mx-auto" />
-                      <div className="text-sm font-semibold text-slate-900">{cv.cv_data?.education?.length || 0}</div>
-                      <div className="text-xs text-slate-500">Education</div>
+                      <div className="bg-gray-50 rounded-lg p-2">
+                        <GraduationCap className="w-4 h-4 text-gray-500 mx-auto" />
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900">{cv.cv_data?.education?.length || 0}</div>
+                      <div className="text-xs text-gray-500">Education</div>
                     </div>
                     <div className="space-y-1">
-                      <Award className="w-4 h-4 text-slate-400 mx-auto" />
-                      <div className="text-sm font-semibold text-slate-900">{cv.cv_data?.skills?.length || 0}</div>
-                      <div className="text-xs text-slate-500">Skills</div>
+                      <div className="bg-gray-50 rounded-lg p-2">
+                        <Award className="w-4 h-4 text-gray-500 mx-auto" />
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900">{cv.cv_data?.skills?.length || 0}</div>
+                      <div className="text-xs text-gray-500">Skills</div>
                     </div>
                   </div>
 
-                  <div className="flex items-center text-sm text-slate-500 pt-2 border-t border-slate-100">
+                  <div className="flex items-center text-sm text-gray-500 pt-2 border-t border-gray-100">
                     <Calendar className="w-4 h-4 mr-2" />
                     <span>Updated {new Date(cv.updated_at).toLocaleDateString()}</span>
                   </div>
@@ -502,7 +551,7 @@ export default function CVMakerPage() {
                         </Button>
                       </Link>
                       <Link href={`/cv-maker/preview/${cv.id}`}>
-                        <Button variant="outline" size="sm" className="px-3">
+                        <Button variant="outline" size="sm" className="px-3 border-gray-300 hover:bg-gray-50">
                           <Eye className="w-4 h-4" />
                         </Button>
                       </Link>
@@ -510,10 +559,10 @@ export default function CVMakerPage() {
                     
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-1">
-                        <Button variant="ghost" size="sm" className="text-slate-600 hover:text-blue-600">
+                        <Button variant="ghost" size="sm" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50">
                           <Share2 className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-slate-600 hover:text-green-600">
+                        <Button variant="ghost" size="sm" className="text-gray-600 hover:text-green-600 hover:bg-green-50">
                           <Download className="w-4 h-4" />
                         </Button>
                       </div>
@@ -521,7 +570,7 @@ export default function CVMakerPage() {
                         variant="ghost" 
                         size="sm" 
                         onClick={() => deleteCV(cv.id)}
-                        className="text-slate-600 hover:text-red-600"
+                        className="text-gray-600 hover:text-red-600 hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
