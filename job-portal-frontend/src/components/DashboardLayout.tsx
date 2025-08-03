@@ -36,6 +36,7 @@ import {
   Heart,
   HelpCircle,
   Moon,
+  MessageCircle,
 } from 'lucide-react'
 import AuthModal from '@/components/AuthModal'
 
@@ -175,6 +176,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       href: '/settings',
       icon: Settings,
       description: 'Account preferences',
+      protected: true
+    },
+    {
+      title: 'Messages',
+      href: '/messages',
+      icon: MessageCircle,
+      description: 'Chat with other users',
       protected: true
     },
     // Company specific

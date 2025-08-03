@@ -257,6 +257,43 @@ class WebSocketManager:
     def get_user_rooms(self, user_id: int):
         """Get rooms a user has joined"""
         return list(self.user_rooms.get(user_id, set()))
+    
+    # Messaging-specific methods
+    def emit_new_message(self, receiver_id: int, message_data: dict):
+        """Notify when a new message is received"""
+        return self.emit_to_user(receiver_id, 'new_message', message_data)
+    
+    def emit_message_sent(self, sender_id: int, message_data: dict):
+        """Notify sender when message is sent (for multi-device sync)"""
+        return self.emit_to_user(sender_id, 'message_sent', message_data)
+    
+    def emit_messages_read(self, conversation_id: int, reader_id: int, exclude_user: int = None):
+        """Notify when messages are marked as read"""
+        data = {
+            'conversation_id': conversation_id,
+            'reader_id': reader_id
+        }
+        return self.emit_to_room(f'conversation_{conversation_id}', 'messages_read', data, exclude_user)
+    
+    def join_conversation_room(self, user_id: int, conversation_id: int):
+        """Join a user to a conversation room"""
+        room = f'conversation_{conversation_id}'
+        if user_id in self.connected_users:
+            self.socketio.emit('join_room', {'room': room}, room=f'user_{user_id}')
+            if user_id in self.user_rooms:
+                self.user_rooms[user_id].add(room)
+            return True
+        return False
+    
+    def leave_conversation_room(self, user_id: int, conversation_id: int):
+        """Remove a user from a conversation room"""
+        room = f'conversation_{conversation_id}'
+        if user_id in self.connected_users:
+            self.socketio.emit('leave_room', {'room': room}, room=f'user_{user_id}')
+            if user_id in self.user_rooms and room in self.user_rooms[user_id]:
+                self.user_rooms[user_id].remove(room)
+            return True
+        return False
 
 # WebSocket manager instance (will be initialized in main app)
 websocket_manager = None
