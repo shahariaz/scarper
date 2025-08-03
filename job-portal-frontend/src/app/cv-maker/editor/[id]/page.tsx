@@ -1516,26 +1516,29 @@ export default function CVEditor() {
     const a4Height = 1123; // A4 height in pixels
 
     return (
-      <div className={`flex justify-center ${isA4Mode ? 'overflow-auto' : ''}`}>
+      <div className="flex justify-center items-center h-full w-full overflow-hidden">
         <div 
-          className={`bg-white shadow-lg border ${isA4Mode ? 'mx-4' : 'rounded-lg h-full'} overflow-y-auto`}
+          className={`bg-white shadow-lg border ${isA4Mode ? '' : 'rounded-lg h-full'} ${isA4Mode ? '' : 'overflow-y-auto'}`}
           style={{ 
             fontFamily: fontFamily,
             fontSize: currentFontSize.base,
             color: textColor,
             ...(isA4Mode && {
               width: `${a4Width}px`,
+              height: `${a4Height}px`,
+              minWidth: `${a4Width}px`,
               minHeight: `${a4Height}px`,
               maxWidth: `${a4Width}px`,
+              maxHeight: `${a4Height}px`,
               aspectRatio: '210/297', // A4 aspect ratio
-              transform: 'scale(0.92)', // Much larger scale for excellent readability
-              transformOrigin: 'top center',
-              margin: '0 auto',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+              transform: 'scale(0.75)', // Further reduced scale to prevent scrolling
+              transformOrigin: 'center center',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
+              overflow: 'hidden', // No scrolling in A4 mode
             })
           }}
         >
-          <div className={`${isA4Mode ? 'p-12' : 'p-8 max-w-4xl mx-auto'}`}>
+          <div className={`${isA4Mode ? 'p-10 h-full overflow-hidden' : 'p-8 max-w-4xl mx-auto'}`}>
           {/* Personal Info */}
           {personalInfo && (
             <div className={`mb-8 ${textAlignment === 'left' ? 'text-left' : textAlignment === 'right' ? 'text-right' : 'text-center'}`}>
@@ -1767,7 +1770,7 @@ export default function CVEditor() {
                   className={`px-4 py-2 rounded-lg transition-all ${
                     viewMode === 'edit' 
                       ? 'bg-blue-600 text-white shadow-md' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      : 'text-slate-700 hover:text-white hover:bg-blue-500'
                   }`}
                 >
                   <Edit3 className="w-4 h-4 mr-2" />
@@ -1780,7 +1783,7 @@ export default function CVEditor() {
                   className={`px-4 py-2 rounded-lg transition-all ${
                     viewMode === 'split' 
                       ? 'bg-blue-600 text-white shadow-md' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      : 'text-slate-700 hover:text-white hover:bg-blue-500'
                   }`}
                 >
                   <SplitSquareHorizontal className="w-4 h-4 mr-2" />
@@ -1793,7 +1796,7 @@ export default function CVEditor() {
                   className={`px-4 py-2 rounded-lg transition-all ${
                     viewMode === 'preview' 
                       ? 'bg-blue-600 text-white shadow-md' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      : 'text-slate-700 hover:text-white hover:bg-blue-500'
                   }`}
                 >
                   <Monitor className="w-4 h-4 mr-2" />
@@ -1913,12 +1916,12 @@ export default function CVEditor() {
             </div>
           </div>
         ) : viewMode === 'split' ? (
-          <div className="flex gap-6 h-[calc(100vh-120px)]">
+          <div className="flex gap-6 h-[calc(100vh-140px)] overflow-hidden">
             {/* Left Panel - Editor */}
             <div className="w-2/5 flex flex-col space-y-4 overflow-hidden">
               {/* Active Section Editor */}
-              <div className="flex-1 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-                <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-8 py-6 border-b border-slate-200">
+              <div className="flex-1 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col">
+                <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-8 py-6 border-b border-slate-200 flex-shrink-0">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       {(() => {
@@ -1949,13 +1952,13 @@ export default function CVEditor() {
                     </div>
                   </div>
                 </div>
-                <div className="p-8 overflow-y-auto max-h-[calc(100vh-320px)]">
+                <div className="flex-1 p-8 overflow-y-auto">
                   {renderSectionContent(activeSection)}
                 </div>
               </div>
               
-              {/* Redesigned Quick Navigation */}
-              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
+              {/* Redesigned Quick Navigation - Fixed Height */}
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 flex-shrink-0">
                 <div className="flex items-center justify-between mb-5">
                   <div>
                     <h3 className="text-lg font-bold text-slate-900">Quick Navigate</h3>
@@ -1979,7 +1982,7 @@ export default function CVEditor() {
                         className={`group relative p-3 rounded-xl transition-all duration-300 transform hover:scale-105 ${
                           isActive
                             ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-200'
-                            : 'bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200 hover:border-blue-300 hover:shadow-md'
+                            : 'bg-slate-50 text-slate-700 hover:bg-blue-500 hover:text-white border border-slate-200 hover:border-blue-500 hover:shadow-md'
                         }`}
                         title={section.name}
                       >
@@ -1987,16 +1990,16 @@ export default function CVEditor() {
                           <div className={`p-2 rounded-lg ${
                             isActive 
                               ? 'bg-white/25' 
-                              : 'bg-white group-hover:bg-blue-100'
+                              : 'bg-blue-50 group-hover:bg-white/25'
                           }`}>
                             <IconComponent className={`w-4 h-4 ${
                               isActive 
                                 ? 'text-white' 
-                                : 'text-slate-600 group-hover:text-blue-600'
+                                : 'text-slate-700 group-hover:text-white'
                             }`} />
                           </div>
                           <div className={`text-xs font-medium text-center leading-tight ${
-                            isActive ? 'text-white' : 'text-slate-700 group-hover:text-blue-700'
+                            isActive ? 'text-white' : 'text-slate-700 group-hover:text-white'
                           }`}>
                             {section.name.split(' ')[0]}
                           </div>
@@ -2015,7 +2018,7 @@ export default function CVEditor() {
 
             {/* Right Panel - Live Preview */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 mb-4 p-6">
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-200 mb-4 p-6 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
                     <div className="p-3 bg-gradient-to-br from-green-100 to-emerald-100 rounded-xl">
@@ -2038,10 +2041,8 @@ export default function CVEditor() {
                 </div>
               </div>
               
-              <div className="flex-1 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl p-6 overflow-hidden">
-                <div className="h-full flex items-center justify-center">
-                  <LivePreview />
-                </div>
+              <div className="flex-1 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl p-6 overflow-hidden flex items-center justify-center">
+                <LivePreview />
               </div>
             </div>
           </div>
