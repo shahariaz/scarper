@@ -15,7 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
-import { User, Settings, LogOut, Building2, Briefcase, Shield, Menu, Home, FileText } from 'lucide-react'
+import { User, Settings, LogOut, Building2, Briefcase, Shield, Menu, Home, FileText, MessageCircle } from 'lucide-react'
 import AuthModal from './AuthModal'
 
 export default function Header() {
@@ -106,6 +106,11 @@ export default function Header() {
                 <Link href="/users/search" className="px-3 py-2 rounded-lg text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-200 font-medium text-sm">
                   People
                 </Link>
+                {isAuthenticated && (
+                  <Link href="/messages" className="px-3 py-2 rounded-lg text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-200 font-medium text-sm">
+                    Messages
+                  </Link>
+                )}
                 <Link href="/blogs" className="px-3 py-2 rounded-lg text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 transition-all duration-200 font-medium text-sm">
                   Blog
                 </Link>
@@ -285,6 +290,12 @@ export default function Header() {
                   <User className="h-5 w-5 mr-3" />
                   People
                 </Link>
+                {isAuthenticated && (
+                  <Link href="/messages" className="flex items-center px-4 py-3 text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 rounded-lg transition-all duration-200 font-medium">
+                    <MessageCircle className="h-5 w-5 mr-3" />
+                    Messages
+                  </Link>
+                )}
                 <Link href="/blogs" className="flex items-center px-4 py-3 text-gray-300 hover:text-yellow-400 hover:bg-gray-800/50 rounded-lg transition-all duration-200 font-medium">
                   <svg className="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />

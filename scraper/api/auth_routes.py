@@ -6,6 +6,7 @@ from functools import wraps
 import jwt
 from datetime import datetime
 from ..models.auth_models import AuthService
+from ..models.messaging_simple import MessagingService
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -13,8 +14,9 @@ logger = setup_logger(__name__)
 # Create auth blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
-# Initialize auth service
+# Initialize services
 auth_service = AuthService()
+messaging_service = MessagingService()
 
 def token_required(f):
     """Decorator to require valid JWT token"""
@@ -436,4 +438,172 @@ def approve_company(company_id):
         return jsonify({
             'success': False,
             'message': 'Failed to approve company'
+        }), 500
+
+# Messaging routes
+@auth_bp.route('/conversations', methods=['GET'])
+@token_required
+def get_conversations():
+    """Get user conversations"""
+    try:
+        user_id = request.current_user['id']
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 20, type=int)
+        
+        result = messaging_service.get_user_conversations(user_id, page, limit)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Get conversations error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to get conversations'
+        }), 500
+
+@auth_bp.route('/conversations', methods=['POST'])
+@token_required
+def create_conversation():
+    """Create or get conversation with another user"""
+    try:
+        data = request.get_json()
+        user_id = request.current_user['id']
+        
+        if 'other_user_id' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'other_user_id is required'
+            }), 400
+        
+        other_user_id = data['other_user_id']
+        
+        # Don't allow conversation with self
+        if user_id == other_user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot create conversation with yourself'
+            }), 400
+        
+        result = messaging_service.create_or_get_conversation(user_id, other_user_id)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Create conversation error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to create conversation'
+        }), 500
+
+@auth_bp.route('/conversations/<int:conversation_id>/messages', methods=['GET'])
+@token_required
+def get_messages(conversation_id):
+    """Get messages from a conversation"""
+    try:
+        user_id = request.current_user['id']
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 50, type=int)
+        
+        result = messaging_service.get_conversation_messages(conversation_id, user_id, page, limit)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Get messages error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to get messages'
+        }), 500
+
+@auth_bp.route('/conversations/<int:conversation_id>/messages', methods=['POST'])
+@token_required
+def send_message(conversation_id):
+    """Send a message to a conversation"""
+    try:
+        data = request.get_json()
+        user_id = request.current_user['id']
+        
+        if 'content' not in data or not data['content'].strip():
+            return jsonify({
+                'success': False,
+                'message': 'Message content is required'
+            }), 400
+        
+        content = data['content'].strip()
+        message_type = data.get('message_type', 'text')
+        reply_to = data.get('reply_to_message_id')
+        metadata = data.get('metadata', {})
+        
+        result = messaging_service.send_message(
+            sender_id=user_id,
+            conversation_id=conversation_id,
+            content=content,
+            message_type=message_type,
+            reply_to=reply_to,
+            metadata=metadata
+        )
+        
+        if result['success']:
+            return jsonify(result), 201
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Send message error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to send message'
+        }), 500
+
+@auth_bp.route('/conversations/<int:conversation_id>/read', methods=['POST'])
+@token_required
+def mark_as_read(conversation_id):
+    """Mark messages as read"""
+    try:
+        data = request.get_json() or {}
+        user_id = request.current_user['id']
+        up_to_message_id = data.get('up_to_message_id')
+        
+        result = messaging_service.mark_messages_as_read(conversation_id, user_id, up_to_message_id)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Mark as read error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to mark messages as read'
+        }), 500
+
+@auth_bp.route('/messages/unread-counts', methods=['GET'])
+@token_required
+def get_unread_counts():
+    """Get unread message counts"""
+    try:
+        user_id = request.current_user['id']
+        
+        result = messaging_service.get_unread_counts(user_id)
+        
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        logger.error(f"Get unread counts error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to get unread counts'
         }), 500

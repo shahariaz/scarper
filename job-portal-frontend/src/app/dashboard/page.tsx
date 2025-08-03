@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { RootState, AppDispatch } from '@/store/store'
 import { fetchUserProfile } from '@/store/slices/authSlice'
 import DashboardLayout from '@/components/DashboardLayout'
+import { MessagingWidget } from '@/components/messaging/MessagingWidget'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +32,8 @@ import {
   XCircle,
   AlertCircle,
   Star,
-  Loader2
+  Loader2,
+  MessageCircle
 } from 'lucide-react'
 import {
   LineChart,
@@ -89,13 +91,6 @@ export default function Dashboard() {
   const { user, isAuthenticated, isLoading, tokens } = useSelector((state: RootState) => state.auth)
   const [mounted, setMounted] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState('6months')
-  const [statistics, setStatistics] = useState<{
-    total_jobs?: number;
-    total_applications?: number;
-    pending_applications?: number;
-    accepted_applications?: number;
-  } | null>(null)
-  const [loadingStats, setLoadingStats] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -107,34 +102,6 @@ export default function Dashboard() {
       dispatch(fetchUserProfile())
     }
   }, [dispatch, tokens.access_token, user, isLoading])
-
-  // Fetch statistics
-  useEffect(() => {
-    const fetchStatistics = async () => {
-      if (!tokens.access_token) return
-      
-      setLoadingStats(true)
-      try {
-        const response = await fetch('/api/jobs/statistics', {
-          headers: {
-            'Authorization': `Bearer ${tokens.access_token}`
-          }
-        })
-        const data = await response.json()
-        if (data.success) {
-          setStatistics(data.statistics)
-        }
-      } catch (error) {
-        console.error('Failed to fetch statistics:', error)
-      } finally {
-        setLoadingStats(false)
-      }
-    }
-
-    if (mounted && tokens.access_token) {
-      fetchStatistics()
-    }
-  }, [mounted, tokens.access_token])
 
   // Show loading state
   if (!mounted || isLoading) {
@@ -312,7 +279,7 @@ export default function Dashboard() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-800 border-gray-700">
+          <TabsList className="grid w-full grid-cols-5 bg-gray-800 border-gray-700">
             <TabsTrigger value="overview" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-300">
               <BarChart3 className="h-4 w-4 mr-2" />
               Overview
@@ -324,6 +291,10 @@ export default function Dashboard() {
             <TabsTrigger value="activity" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-300">
               <Activity className="h-4 w-4 mr-2" />
               Activity
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-300">
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Messages
             </TabsTrigger>
             <TabsTrigger value="goals" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-300">
               <Target className="h-4 w-4 mr-2" />
@@ -580,6 +551,16 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Messages Tab */}
+          <TabsContent value="messages" className="space-y-6 mt-6">
+            <div className="h-[600px]">
+              <MessagingWidget 
+                className="h-full bg-gray-800 border-gray-700" 
+                isFullscreen={false}
+              />
+            </div>
           </TabsContent>
 
           {/* Goals Tab */}

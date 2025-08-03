@@ -12,6 +12,7 @@ export default function ConditionalHeader() {
     pathname === '/company-dashboard' ||
     pathname === '/profile' ||
     pathname === '/settings' ||
+    pathname === '/messages' ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/post-job') ||
     pathname.startsWith('/applications') ||

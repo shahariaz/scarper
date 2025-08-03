@@ -21,6 +21,7 @@ from scraper.models.job_models import JobService
 from scraper.models.blog_models import BlogService
 from scraper.models.social_models import SocialService
 from scraper.models.cv_models import CVService
+from scraper.models.messaging_models import MessagingService
 from scraper.websocket_manager import init_websocket, get_websocket_manager
 from scraper.utils.logger import setup_logger
 
@@ -32,6 +33,7 @@ job_service = JobService()
 blog_service = BlogService()
 social_service = SocialService()
 cv_service = CVService()
+messaging_service = MessagingService('jobs.db')
 
 def create_app():
     """Create and configure the Flask application"""
@@ -4378,6 +4380,205 @@ def create_app():
             return jsonify({
                 'success': False,
                 'message': 'Failed to duplicate CV'
+            }), 500
+
+    # ============================================================================
+    # MESSAGING ROUTES
+    # ============================================================================
+    
+    @app.route('/api/messages/conversations', methods=['GET'])
+    @token_required
+    def get_user_conversations():
+        """Get all conversations for the current user"""
+        try:
+            limit = request.args.get('limit', 20, type=int)
+            offset = request.args.get('offset', 0, type=int)
+            
+            result = messaging_service.get_user_conversations(
+                request.current_user_id, limit, offset
+            )
+            
+            if result['success']:
+                return jsonify(result), 200
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error getting user conversations: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch conversations'
+            }), 500
+    
+    @app.route('/api/messages/conversations/<int:user_id>', methods=['GET'])
+    @token_required
+    def get_or_create_conversation(user_id):
+        """Get or create a conversation with another user"""
+        try:
+            if user_id == request.current_user_id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot create conversation with yourself'
+                }), 400
+            
+            result = messaging_service.get_or_create_conversation(
+                request.current_user_id, user_id
+            )
+            
+            if result['success']:
+                return jsonify(result), 200
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error getting/creating conversation: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to get conversation'
+            }), 500
+    
+    @app.route('/api/messages/conversations/<int:conversation_id>/messages', methods=['GET'])
+    @token_required
+    def get_conversation_messages(conversation_id):
+        """Get messages from a conversation"""
+        try:
+            limit = request.args.get('limit', 50, type=int)
+            offset = request.args.get('offset', 0, type=int)
+            
+            result = messaging_service.get_conversation_messages(
+                conversation_id, request.current_user_id, limit, offset
+            )
+            
+            if result['success']:
+                return jsonify(result), 200
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error getting conversation messages: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch messages'
+            }), 500
+    
+    @app.route('/api/messages/send', methods=['POST'])
+    @token_required
+    def send_message():
+        """Send a message to another user"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'No data provided'
+                }), 400
+            
+            receiver_id = data.get('receiver_id')
+            content = data.get('content')
+            message_type = data.get('message_type', 'text')
+            
+            if not receiver_id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Receiver ID is required'
+                }), 400
+            
+            if not content or not content.strip():
+                return jsonify({
+                    'success': False,
+                    'message': 'Message content is required'
+                }), 400
+            
+            if receiver_id == request.current_user_id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot send message to yourself'
+                }), 400
+            
+            result = messaging_service.send_message(
+                request.current_user_id, receiver_id, content, message_type
+            )
+            
+            if result['success']:
+                # Emit real-time message via WebSocket
+                websocket_manager = get_websocket_manager()
+                if websocket_manager:
+                    # Notify the receiver
+                    websocket_manager.emit_to_user(receiver_id, 'new_message', {
+                        'message': result['data'],
+                        'conversation_id': result['data']['conversation_id']
+                    })
+                    
+                    # Notify the sender (for multi-device sync)
+                    websocket_manager.emit_to_user(request.current_user_id, 'message_sent', {
+                        'message': result['data'],
+                        'conversation_id': result['data']['conversation_id']
+                    })
+                
+                return jsonify(result), 201
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error sending message: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send message'
+            }), 500
+    
+    @app.route('/api/messages/conversations/<int:conversation_id>/read', methods=['POST'])
+    @token_required
+    def mark_conversation_as_read(conversation_id):
+        """Mark all messages in a conversation as read"""
+        try:
+            result = messaging_service.mark_messages_as_read(
+                conversation_id, request.current_user_id
+            )
+            
+            if result['success']:
+                # Emit real-time read status update via WebSocket
+                websocket_manager = get_websocket_manager()
+                if websocket_manager:
+                    # Get conversation details to notify the other user
+                    conv_result = messaging_service.get_or_create_conversation(
+                        request.current_user_id, request.current_user_id  # This will get existing conversation
+                    )
+                    # We need to implement a method to get conversation participants
+                    # For now, just emit the read status
+                    websocket_manager.emit_to_room(f'conversation_{conversation_id}', 'messages_read', {
+                        'conversation_id': conversation_id,
+                        'reader_id': request.current_user_id
+                    })
+                
+                return jsonify(result), 200
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error marking messages as read: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to mark messages as read'
+            }), 500
+    
+    @app.route('/api/messages/unread-count', methods=['GET'])
+    @token_required
+    def get_unread_message_count():
+        """Get total unread message count for the current user"""
+        try:
+            result = messaging_service.get_unread_count(request.current_user_id)
+            
+            if result['success']:
+                return jsonify(result), 200
+            else:
+                return jsonify(result), 400
+                
+        except Exception as e:
+            logger.error(f"Error getting unread message count: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to get unread count'
             }), 500
 
     # ============================================================================
