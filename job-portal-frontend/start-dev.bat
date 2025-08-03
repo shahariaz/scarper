@@ -1,3 +1,6 @@
 @echo off
-cd /d "F:\Scarpper\job-portal-frontend"
+echo Starting Job Portal Frontend...
+cd /d "f:\fuck\scarper\job-portal-frontend"
+echo Current directory: %CD%
 npm run dev
+pause
