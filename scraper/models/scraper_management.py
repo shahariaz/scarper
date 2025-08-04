@@ -351,7 +351,15 @@ class ScraperManager:
         
         # Add current jobs
         for job in self.current_jobs.values():
-            jobs.append(asdict(job))
+            job_dict = asdict(job)
+            # Convert datetime to string for consistency
+            if isinstance(job_dict.get('created_at'), datetime):
+                job_dict['created_at'] = job_dict['created_at'].isoformat()
+            if isinstance(job_dict.get('started_at'), datetime):
+                job_dict['started_at'] = job_dict['started_at'].isoformat()
+            if isinstance(job_dict.get('completed_at'), datetime):
+                job_dict['completed_at'] = job_dict['completed_at'].isoformat()
+            jobs.append(job_dict)
         
         # Add completed jobs from database
         try:
@@ -380,8 +388,8 @@ class ScraperManager:
         except Exception as e:
             logger.error(f"Failed to get recent jobs: {e}")
         
-        # Sort by created_at and return limited results
-        jobs.sort(key=lambda x: x['created_at'], reverse=True)
+        # Sort by created_at (all strings now) and return limited results
+        jobs.sort(key=lambda x: x['created_at'] or '', reverse=True)
         return jobs[:limit]
 
     def is_scraping_active(self) -> bool:

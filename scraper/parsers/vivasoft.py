@@ -98,7 +98,7 @@ class VivasoftJobParser(BaseJobParser):
                     "posted_date": None  # Will be set to current date by database
                 }
                 jobs.append(job)
-                post_job(job)
+                post_job(job, job_source='scraped', created_by='Vivasoft')
                 logger.info(f"Found job: {title} in {location}")
                     
         except Exception as e:

@@ -49,7 +49,7 @@ class KinetikJobParser(BaseJobParser):
                     "apply_link": apply_link
                 }
                 jobs.append(job)
-                post_job(job)
+                post_job(job, job_source='scraped', created_by='Kinetik')
                 logger.info(f"Found job: {title}")
             
             # If no job links found, try alternative Greenhouse patterns
@@ -76,7 +76,7 @@ class KinetikJobParser(BaseJobParser):
                                 "apply_link": apply_link
                             }
                             jobs.append(job)
-                            post_job(job)
+                            post_job(job, job_source='scraped', created_by='Kinetik')
                             logger.info(f"Found job: {title}")
                     
         except Exception as e:

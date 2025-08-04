@@ -67,7 +67,7 @@ class PathaoJobParser(BaseJobParser):
                             "apply_link": apply_link
                         }
                         jobs.append(job)
-                        post_job(job)
+                        post_job(job, job_source='scraped', created_by='Pathao')
                         logger.info(f"Found job: {text}")
                 
                 # If no jobs found with headings, try looking for links or buttons
@@ -92,7 +92,7 @@ class PathaoJobParser(BaseJobParser):
                                 "apply_link": apply_link
                             }
                             jobs.append(job)
-                            post_job(job)
+                            post_job(job, job_source='scraped', created_by='Pathao')
                             logger.info(f"Found job: {text}")
                 
         except Exception as e:
@@ -119,7 +119,7 @@ class PathaoJobParser(BaseJobParser):
                             "apply_link": self.url
                         }
                         jobs.append(job)
-                        post_job(job)
+                        post_job(job, job_source='scraped', created_by='Pathao')
                         logger.info(f"Found job (fallback): {text}")
                         
             except Exception as fallback_e:

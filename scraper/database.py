@@ -41,7 +41,9 @@ class JobDatabase:
                 posted_to_api BOOLEAN DEFAULT FALSE,
                 hash TEXT UNIQUE,
                 is_active BOOLEAN DEFAULT TRUE,
-                view_count INTEGER DEFAULT 0
+                view_count INTEGER DEFAULT 0,
+                job_source TEXT DEFAULT 'scraped',
+                created_by TEXT DEFAULT 'system'
             )
         ''')
         
@@ -69,11 +71,17 @@ class JobDatabase:
     
     def _generate_job_hash(self, job: Dict) -> str:
         """Generate a unique hash for job deduplication."""
-        # Use title + company + location for uniqueness
-        unique_string = f"{job['title'].lower().strip()}_{job['company'].lower().strip()}_{job.get('location', '').lower().strip()}"
-        return str(hash(unique_string))
+        import hashlib
+        # Use title + company + location + first 100 chars of description for better uniqueness
+        title = job['title'].lower().strip()
+        company = job['company'].lower().strip()
+        location = job.get('location', '').lower().strip()
+        description_snippet = (job.get('description', '') or '')[:100].lower().strip()
+        
+        unique_string = f"{title}|{company}|{location}|{description_snippet}"
+        return hashlib.md5(unique_string.encode()).hexdigest()
     
-    def add_job(self, job: Dict) -> bool:
+    def add_job(self, job: Dict, job_source: str = 'scraped', created_by: str = 'system') -> bool:
         """Add a job to the database. Returns True if job is new, False if duplicate."""
         job_hash = self._generate_job_hash(job)
         
@@ -81,9 +89,17 @@ class JobDatabase:
         cursor = conn.cursor()
         
         try:
+            # Check if job already exists with same hash
+            cursor.execute('SELECT id, job_source, created_by FROM jobs WHERE hash = ?', (job_hash,))
+            existing = cursor.fetchone()
+            
+            if existing:
+                logger.debug(f"Duplicate job skipped: {job['title']} at {job['company']} (existing: {existing[1]}/{existing[2]})")
+                return False
+            
             cursor.execute('''
-                INSERT INTO jobs (title, company, location, type, description, apply_link, source_url, hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO jobs (title, company, location, type, description, apply_link, source_url, hash, job_source, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 job['title'],
                 job['company'], 
@@ -92,15 +108,17 @@ class JobDatabase:
                 job.get('description', ''),
                 job.get('apply_link', ''),
                 job.get('source_url', ''),
-                job_hash
+                job_hash,
+                job_source,
+                created_by
             ))
             conn.commit()
-            logger.info(f"Added new job: {job['title']} at {job['company']}")
+            logger.info(f"Added new job: {job['title']} at {job['company']} (source: {job_source}/{created_by})")
             return True
             
         except sqlite3.IntegrityError:
-            # Duplicate job
-            logger.debug(f"Duplicate job skipped: {job['title']} at {job['company']}")
+            # Duplicate job (backup check)
+            logger.debug(f"Duplicate job skipped (integrity): {job['title']} at {job['company']}")
             return False
         finally:
             conn.close()
@@ -115,7 +133,8 @@ class JobDatabase:
             cursor.execute('''
                 SELECT id, title, company, location, type, description, requirements, 
                        responsibilities, benefits, salary_range, experience_level, skills,
-                       apply_link, source_url, posted_date, deadline, scraped_at, view_count
+                       apply_link, source_url, posted_date, deadline, scraped_at, view_count,
+                       job_source, created_by
                 FROM jobs WHERE id = ? AND is_active = TRUE
             ''', (job_id,))
             
@@ -147,6 +166,8 @@ class JobDatabase:
                 'deadline': job[15],
                 'scraped_at': job[16],
                 'view_count': job[17] + 1,  # Include the updated count
+                'job_source': job[18],  # scraped, manual, admin, etc.
+                'created_by': job[19],  # company name or admin name
                 'status': 'active'
             }
             

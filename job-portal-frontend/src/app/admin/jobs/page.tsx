@@ -50,6 +50,8 @@ interface Job {
   view_count?: number;
   application_count?: number;
   admin_notes?: string;
+  job_source?: string;  // scraped, manual, admin, etc.
+  created_by?: string;  // company name or admin name
 }
 
 interface JobFilters {
@@ -441,6 +443,26 @@ export default function AdminJobs() {
     return <Badge className={colors[createdByType as keyof typeof colors] || colors.scraper}>{createdByType}</Badge>
   }
 
+  const getJobSourceBadge = (jobSource?: string, createdBy?: string) => {
+    if (!jobSource) return null;
+    
+    const colors = {
+      scraped: 'bg-green-500/20 text-green-300 border-green-500/30',
+      manual: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+      admin: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+    }
+    
+    const displayText = jobSource === 'scraped' && createdBy 
+      ? `Scraped from ${createdBy}` 
+      : jobSource.charAt(0).toUpperCase() + jobSource.slice(1);
+    
+    return (
+      <Badge className={colors[jobSource as keyof typeof colors] || colors.manual}>
+        {displayText}
+      </Badge>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-8 p-6">
@@ -706,6 +728,7 @@ export default function AdminJobs() {
                           
                           <div className="flex items-center gap-2 mb-3">
                             {getCreatedByBadge(job.created_by_type)}
+                            {getJobSourceBadge(job.job_source, job.created_by)}
                             <Badge className="text-xs bg-gray-600/50 text-gray-300 border-gray-500">
                               <Calendar className="h-3 w-3 mr-1" />
                               {new Date(job.created_at).toLocaleDateString()}
@@ -926,6 +949,7 @@ export default function AdminJobs() {
                 <div className="flex items-center gap-3 mb-4">
                   {getStatusBadge(selectedJob)}
                   {getCreatedByBadge(selectedJob.created_by_type)}
+                  {getJobSourceBadge(selectedJob.job_source, selectedJob.created_by)}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -57,7 +57,7 @@ class WPXPOJobParser(BaseJobParser):
                                 "apply_link": apply_link
                             }
                             jobs.append(job)
-                            post_job(job)
+                            post_job(job, job_source='scraped', created_by='WPXPO')
                     
                     if jobs:  # If we found jobs, break
                         break

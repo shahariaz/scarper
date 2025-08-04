@@ -6,14 +6,14 @@ from .database import JobDatabase
 logger = setup_logger("JobAPI")
 db = JobDatabase()
 
-def post_job(job_data: dict):
+def post_job(job_data: dict, job_source: str = 'scraped', created_by: str = 'scraper'):
     """Post job data to the API endpoint and store in local database."""
     
     # Add to local database first (with deduplication)
-    is_new_job = db.add_job(job_data)
+    is_new_job = db.add_job(job_data, job_source=job_source, created_by=created_by)
     
     if not is_new_job:
-        logger.debug(f"Skipping duplicate job: {job_data.get('title')} ({job_data.get('company')})")
+        logger.debug(f"Skipping duplicate job: {job_data.get('title')} ({job_data.get('company')}) - source: {job_source}")
         return {"status": "duplicate", "job": job_data}
     
     # Only post new jobs to API

@@ -51,6 +51,8 @@ class JobManagementDatabase:
                 -- Role-based creation flags
                 created_by_user_id INTEGER,
                 created_by_type TEXT CHECK (created_by_type IN ('admin', 'company', 'scraper')) DEFAULT 'scraper',
+                job_source TEXT DEFAULT 'scraped', -- scraped, manual, admin, etc.
+                created_by TEXT, -- company name or admin name who created/scraped this job
                 approved_by_admin BOOLEAN DEFAULT FALSE,
                 admin_notes TEXT,
                 -- Status tracking
@@ -76,6 +78,39 @@ class JobManagementDatabase:
                 FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL
             )
         ''')
+        
+        # Add migration for job_source and created_by columns if they don't exist
+        try:
+            # Check if job_source column exists in job_postings
+            cursor.execute("PRAGMA table_info(job_postings)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'job_source' not in columns:
+                cursor.execute('ALTER TABLE job_postings ADD COLUMN job_source TEXT DEFAULT "scraped"')
+                logger.info("Added job_source column to job_postings table")
+            
+            if 'created_by' not in columns:
+                cursor.execute('ALTER TABLE job_postings ADD COLUMN created_by TEXT')
+                logger.info("Added created_by column to job_postings table")
+                
+        except Exception as e:
+            logger.error(f"Error adding migration columns: {e}")
+        
+        # Apply same migration to original jobs table for backward compatibility
+        try:
+            cursor.execute("PRAGMA table_info(jobs)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'job_source' not in columns:
+                cursor.execute('ALTER TABLE jobs ADD COLUMN job_source TEXT DEFAULT "scraped"')
+                logger.info("Added job_source column to jobs table")
+            
+            if 'created_by' not in columns:
+                cursor.execute('ALTER TABLE jobs ADD COLUMN created_by TEXT')
+                logger.info("Added created_by column to jobs table")
+                
+        except Exception as e:
+            logger.error(f"Error adding migration columns to jobs table: {e}")
         
         # Job applications table
         cursor.execute('''
@@ -546,7 +581,7 @@ class JobService:
                        jp.experience_level, jp.skills, jp.category, jp.industry,
                        jp.posted_date, jp.deadline, jp.view_count, jp.is_featured,
                        jp.created_by_type, jp.status, jp.company_logo_url, jp.approved_by_admin,
-                       jp.created_at, jp.admin_notes,
+                       jp.created_at, jp.admin_notes, jp.job_source, jp.created_by,
                        (SELECT COUNT(*) FROM job_applications WHERE job_id = jp.id) as application_count
                 FROM job_postings jp
                 WHERE {where_clause}
@@ -583,7 +618,9 @@ class JobService:
                     'approved_by_admin': bool(row[21]),  # Convert SQLite boolean to Python boolean
                     'created_at': row[22],  # Add created_at field for frontend
                     'admin_notes': row[23],  # Add admin_notes field
-                    'application_count': row[24]
+                    'job_source': row[24],  # scraped, manual, admin, etc.
+                    'created_by': row[25],  # company name or admin name
+                    'application_count': row[26]
                 }
                 jobs.append(job_dict)
             

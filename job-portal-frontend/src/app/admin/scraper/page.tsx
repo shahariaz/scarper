@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState, AppDispatch } from '@/store/store'
 import { fetchUserProfile } from '@/store/slices/authSlice'
@@ -27,8 +27,13 @@ import {
   BarChart3,
   Timer,
   Users,
-  Zap
+  Zap,
+  Wifi,
+  WifiOff,
+  Terminal,
+  ScrollText
 } from 'lucide-react'
+import { io } from 'socket.io-client'
 
 interface ScraperJob {
   id: string;
@@ -99,6 +104,72 @@ export default function AdminScraperManagement() {
   const [selectedParser, setSelectedParser] = useState<string>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  
+  // Real-time WebSocket state
+  const [wsConnected, setWsConnected] = useState(false)
+  const [realTimeLogs, setRealTimeLogs] = useState<string[]>([])
+  const [showLogs, setShowLogs] = useState(false)
+  const logsEndRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to bottom of logs
+  const scrollToBottom = () => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [realTimeLogs])
+
+  // Initialize WebSocket connection
+  useEffect(() => {
+    if (!mounted || !tokens.access_token || user?.user_type !== 'admin') return
+
+    console.log('🔌 Connecting to WebSocket...')
+    const newSocket = io('http://localhost:5001', {
+      transports: ['websocket'],
+      query: {
+        auth_token: tokens.access_token
+      }
+    })
+
+    newSocket.on('connect', () => {
+      console.log('✅ WebSocket connected')
+      setWsConnected(true)
+      newSocket.emit('join', 'scraper_updates')
+    })
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ WebSocket disconnected')
+      setWsConnected(false)
+    })
+
+    newSocket.on('stats_update', (data) => {
+      console.log('📊 Stats update received:', data)
+      if (data && data.data) {
+        setStats(data.data)
+        setLastRefresh(new Date())
+      }
+    })
+
+    newSocket.on('scraper_update', (data) => {
+      console.log('🔧 Scraper update received:', data)
+      if (data && data.message) {
+        setRealTimeLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${data.message}`])
+      }
+    })
+
+    newSocket.on('log_update', (data) => {
+      console.log('📝 Log update received:', data)
+      if (data && data.message) {
+        setRealTimeLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${data.message}`])
+      }
+    })
+
+    return () => {
+      console.log('🔌 Cleaning up WebSocket connection')
+      newSocket.disconnect()
+    }
+  }, [mounted, tokens.access_token, user?.user_type])
 
   useEffect(() => {
     setMounted(true)
@@ -335,8 +406,30 @@ export default function AdminScraperManagement() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <Clock className="h-4 w-4" />
-              Last updated: {lastRefresh.toLocaleTimeString()}
+              Last updated: {mounted ? lastRefresh.toLocaleTimeString() : '...'}
             </div>
+            <div className="flex items-center gap-2 text-sm">
+              {wsConnected ? (
+                <div className="flex items-center gap-1 text-green-400">
+                  <Wifi className="h-4 w-4" />
+                  <span>Live</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-red-400">
+                  <WifiOff className="h-4 w-4" />
+                  <span>Offline</span>
+                </div>
+              )}
+            </div>
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLogs(!showLogs)}
+              className={`${showLogs ? 'bg-blue-600/20 border-blue-600 text-blue-400' : 'bg-gray-800 border-gray-700'}`}
+            >
+              <Terminal className="h-4 w-4 mr-1" />
+              {showLogs ? 'Hide' : 'Show'} Logs
+            </Button>
             <Button 
               variant="outline"
               size="sm"
@@ -419,6 +512,59 @@ export default function AdminScraperManagement() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* Real-time Logs Panel */}
+        {showLogs && (
+          <Card className="bg-gray-800 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <ScrollText className="h-5 w-5 text-cyan-400" />
+                Real-time Scraping Logs
+                {wsConnected ? (
+                  <Badge className="bg-green-500/20 text-green-300 border-green-500/30 ml-2">
+                    <Wifi className="h-3 w-3 mr-1" />
+                    Live
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-500/20 text-red-300 border-red-500/30 ml-2">
+                    <WifiOff className="h-3 w-3 mr-1" />
+                    Disconnected
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+                {realTimeLogs.length === 0 ? (
+                  <div className="text-gray-400 text-center py-8">
+                    <Terminal className="h-8 w-8 mx-auto mb-2" />
+                    <p>No logs yet. Start scraping to see real-time updates...</p>
+                  </div>
+                ) : (
+                  <div>
+                    {realTimeLogs.map((log, index) => (
+                      <div key={index} className="text-gray-300 py-1 border-b border-gray-700/50">
+                        {log}
+                      </div>
+                    ))}
+                    <div ref={logsEndRef} />
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between items-center mt-3 text-sm text-gray-400">
+                <span>{realTimeLogs.length} log entries</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRealTimeLogs([])}
+                  className="text-xs bg-gray-800 border-gray-600 hover:bg-gray-700"
+                >
+                  Clear Logs
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Manual Scraping Control */}
@@ -560,8 +706,8 @@ export default function AdminScraperManagement() {
               </div>
             ) : (
               <div className="space-y-3">
-                {jobs.slice(0, 10).map((job) => (
-                  <div key={job.id} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                {jobs.slice(0, 10).map((job, index) => (
+                  <div key={`${job.id}-${index}`} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <h4 className="text-white font-medium">
@@ -571,7 +717,7 @@ export default function AdminScraperManagement() {
                         {getTriggeredByBadge(job.triggered_by)}
                       </div>
                       <div className="text-sm text-gray-400">
-                        {new Date(job.created_at).toLocaleString()}
+                        {mounted && job.created_at ? new Date(job.created_at).toLocaleString() : '...'}
                       </div>
                     </div>
                     
@@ -580,7 +726,7 @@ export default function AdminScraperManagement() {
                         <p className="text-gray-400">Jobs Found</p>
                         <p className="text-white font-medium">{job.jobs_found}</p>
                       </div>
-                      {job.started_at && job.completed_at && (
+                      {job.started_at && job.completed_at && mounted && (
                         <div>
                           <p className="text-gray-400">Duration</p>
                           <p className="text-white font-medium">
@@ -634,7 +780,7 @@ export default function AdminScraperManagement() {
                         <span className="text-gray-400">Avg Duration:</span>
                         <span className="text-white">{formatDuration(parser.avg_duration)}</span>
                       </div>
-                      {parser.last_run && (
+                      {parser.last_run && mounted && (
                         <div className="flex justify-between">
                           <span className="text-gray-400">Last Run:</span>
                           <span className="text-white">{new Date(parser.last_run).toLocaleDateString()}</span>

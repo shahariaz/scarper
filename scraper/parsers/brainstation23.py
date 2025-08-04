@@ -56,7 +56,7 @@ class BrainStation23JobParser(BaseJobParser):
                     "apply_link": apply_link
                 }
                 jobs.append(job)
-                post_job(job)
+                post_job(job, job_source='scraped', created_by='BrainStation 23')
                 logger.info(f"Found job: {title}")
                     
         except Exception as e:

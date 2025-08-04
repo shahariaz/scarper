@@ -47,7 +47,7 @@ class RelisourceJobParser(BaseJobParser):
                         "apply_link": apply_link
                     }
                     jobs.append(job)
-                    post_job(job)
+                    post_job(job, job_source='scraped', created_by='Relisource')
                     
         except Exception as e:
             logger.error(f"Error scraping Relisource: {e}")

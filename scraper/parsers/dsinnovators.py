@@ -56,7 +56,7 @@ class DSInnovatorsJobParser(BaseJobParser):
                     "apply_link": apply_link
                 }
                 jobs.append(job)
-                post_job(job)
+                post_job(job, job_source='scraped', created_by='DSInnovators')
                 logger.info(f"Found job: {title}")
             
             # Alternative: Look for Workable-specific job containers
@@ -83,7 +83,7 @@ class DSInnovatorsJobParser(BaseJobParser):
                                 "apply_link": apply_link
                             }
                             jobs.append(job)
-                            post_job(job)
+                            post_job(job, job_source='scraped', created_by='DSInnovators')
                             logger.info(f"Found job: {title}")
                     
         except Exception as e:

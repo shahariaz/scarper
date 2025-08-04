@@ -83,7 +83,7 @@ class DynamicJobParser(BaseJobParser):
                             "apply_link": apply_link
                         }
                         jobs.append(job)
-                        post_job(job)
+                        post_job(job, job_source='scraped', created_by=self.company)
                 
         except Exception as e:
             logger.error(f"Error scraping {self.company} with Playwright: {e}")
@@ -142,7 +142,7 @@ class BrainStation23DynamicParser(DynamicJobParser):
                             "apply_link": self.url
                         }
                         jobs.append(job)
-                        post_job(job)
+                        post_job(job, job_source='scraped', created_by=self.company)
                 
         except Exception as e:
             logger.error(f"Error scraping {self.company}: {e}")
