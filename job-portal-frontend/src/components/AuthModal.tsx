@@ -7,11 +7,10 @@ import { RootState, AppDispatch } from '../store/store'
 import { apiService } from '../services/api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
-import { CardDescription } from './ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Label } from './ui/label'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 
 export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -116,9 +115,9 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
       <DialogContent className="max-w-md bg-gray-800 border-gray-700">
         <DialogHeader>
           <DialogTitle className="text-2xl text-yellow-400">Welcome</DialogTitle>
-          <CardDescription className="text-gray-300">
+          <DialogDescription className="text-gray-300">
             Sign in to your account or create a new one
-          </CardDescription>
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4">

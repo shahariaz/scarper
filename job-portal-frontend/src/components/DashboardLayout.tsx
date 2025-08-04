@@ -253,6 +253,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         description: 'Review job postings',
         badge: pendingCounts.jobs > 0 ? pendingCounts.jobs.toString() : null,
         protected: true
+      },
+      {
+        title: 'Scraper Management',
+        href: '/admin/scraper',
+        icon: Settings,
+        description: 'Control job scraping',
+        protected: true
       }
     ] : [])
   ]
